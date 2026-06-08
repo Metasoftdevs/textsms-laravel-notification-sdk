@@ -1,0 +1,80 @@
+{
+    "name": "metasoftdevs/textsms-laravel-notification-sdk",
+    "description": "Drop-in Laravel notification channel for TextSMS (https://sms.textsms.co.ke) with a provider-agnostic gateway, event-driven delivery reconciliation, and pluggable phone-number normalisation. Laravel 12+, PHP 8.2+.",
+    "keywords": [
+        "laravel",
+        "notification",
+        "sms",
+        "textsms",
+        "kenya",
+        "metasoftdevs"
+    ],
+    "type": "library",
+    "license": "MIT",
+    "homepage": "https://github.com/Metasoftdevs/textsms-laravel-notification-sdk",
+    "support": {
+        "issues": "https://github.com/Metasoftdevs/textsms-laravel-notification-sdk/issues",
+        "source": "https://github.com/Metasoftdevs/textsms-laravel-notification-sdk",
+        "email": "support@metasoftdevs.com"
+    },
+    "authors": [
+        {
+            "name": "MetaSoftDevs",
+            "email": "support@metasoftdevs.com",
+            "homepage": "https://github.com/Metasoftdevs",
+            "role": "Maintainer"
+        }
+    ],
+    "require": {
+        "php": "^8.2",
+        "illuminate/console": "^12.0",
+        "illuminate/contracts": "^12.0",
+        "illuminate/database": "^12.0",
+        "illuminate/events": "^12.0",
+        "illuminate/http": "^12.0",
+        "illuminate/notifications": "^12.0",
+        "illuminate/routing": "^12.0",
+        "illuminate/support": "^12.0",
+        "psr/log": "^3.0"
+    },
+    "require-dev": {
+        "larastan/larastan": "^3.0",
+        "laravel/pint": "^1.18",
+        "orchestra/testbench": "^10.0",
+        "pestphp/pest": "^3.5",
+        "pestphp/pest-plugin-laravel": "^3.0",
+        "phpstan/phpstan": "^2.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "MetaSoftDevs\\TextSmsLaravelNotificationSdk\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "MetaSoftDevs\\TextSmsLaravelNotificationSdk\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "vendor/bin/pest",
+        "test-coverage": "vendor/bin/pest --coverage",
+        "phpstan": "vendor/bin/phpstan analyse",
+        "pint": "vendor/bin/pint",
+        "pint-test": "vendor/bin/pint --test"
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "MetaSoftDevs\\TextSmsLaravelNotificationSdk\\TextSmsNotificationServiceProvider"
+            ]
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
