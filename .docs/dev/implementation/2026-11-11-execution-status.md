@@ -6,13 +6,18 @@ Laravel13 dependency graphs, fresh Laravel12/13 apps, real database probes and
 controlled archive pass. Root vendor is restored and the final root gate passes. Remote
 CI passed all14 jobs; annotated `v1.0.0-rc1` is pushed on `e57ee40` and both
 the actual tagged GitHub ZIP and its Laravel12/13 installation are verified.
-Public Packagist publication remains an account operation. Exact evidence is
+The owner subsequently published the package on public Packagist. Installation
+in the designated demo, two single messages (including Laravel notifications),
+and a two-item bulk batch passed; the owner confirms all four handset receipts.
+Exact release evidence is
 tracked in [release execution](2026-11-11-commit-ci-and-tag-verification.md).
-Live SMS verification is explicitly deferred until after publication; historical
-recipient retention is accepted. Neither remains a pre-publication blocker.
+The previously deferred basic live submission/receipt check is now complete;
+historical recipient retention remains accepted. See
+[live validation](2026-11-11-live-packagist-validation.md) for the exact scope.
 This supersedes the November 9 pathway for current work.
 The local-gate snapshot below predates commits. See release execution for
-current commit/push/tag results; no live-provider send or history rewrite is planned.
+current commit/push/tag results; no history rewrite occurred. Live validation
+is recorded separately from the earlier local-gate snapshot.
 
 ## Implemented resolutions
 
@@ -36,22 +41,22 @@ current commit/push/tag results; no live-provider send or history rewrite is pla
 |---|---|
 | T-01,T-02,T-05 | Earlier acceptance retained by the final regression suite; no policy reopened. |
 | T-03,T-04,T-06 | Approved passive callback, bounded retry and authenticated limiter behavior implemented; credential/balance remainder now closed. |
-| T-07 | Owner defers live provider/reference tests to a live Laravel test application after publication; evidence remains unverified. |
+| T-07 | Published RC installed in the specified demo; four live messages accepted and received, 26-character references accepted and bulk echo verified. Balance, callback contracts and idempotency remain outside this run. |
 | T-08A / T-08B | Controlled archive accepted; current privacy/disclosure resolved, historical recipient retention accepted by owner. |
 | T-09,T-15,T-20 | Earlier event serialization, lazy channel registration and hygiene acceptance retained; final contract-only kernel correction reviewed. |
 | T-10 | Deferred outside approved passive scope; no poller or reconciliation requirement added. |
-| T-11 | Passive-support wording accurate; provider-specific live claims remain provisional until T-07. |
+| T-11 | Passive-support wording accurate; basic live submission/reference behavior is verified within the recorded T-07 scope. Untested provider contracts remain provisional. |
 | T-12,T-13,T-14 | Native migration/schema, morph association and test-double fidelity implemented and independently accepted. |
 | T-16 | Required provider/binding/normalizer/command and accepted behavior regressions exist in381 tests; no coverage-percentage or exhaustive-coverage claim. Old poll-command criteria are superseded by passive scope. |
 | T-17,T-18 | All12 remote matrix jobs plus PHPStan/Pint pass on exact tagged commit `e57ee40`; actual workflow validation/audit steps pass. |
 | T-19 | Current public docs/examples/recipes aligned; historical extraction/review material remains clearly marked. |
-| T-21 | Actual pushed RC tag, remote GitHub archive, tagged archive installs and boot on12/13 all verified. Public visibility/Packagist publication remain account steps. |
+| T-21 | Actual pushed RC tag, remote GitHub archive, tagged archive installs and boot on12/13 all verified. Owner publication and public Packagist installation are complete. |
 
 ## B1–B9 crosscheck (dispositions)
 
 | Review inference | Disposition |
 |---|---|
-| B1: no real SMS ever sent | Too absolute. Candidate live send/reference behavior remains unverified. Owner explicitly defers confirmation to a live test Laravel application after publication; no billable request is inferred. |
+| B1: no real SMS ever sent | Resolved by authorized live tests after publication:two singles plus two bulk items accepted and received; default26-character references accepted and bulk echo verified. |
 | B2: recipient/private folders prevent publication | Current recipient is anonymized and folder disclosure is resolved. Owner accepts keeping the value in historical commits; no history rewrite or remote force-push is required. |
 | B3: schema unsettled | Fresh schema and native publishing resolved; old tables need an application-owned forward migration preserving rows/indexes/keys and engine-specific enum/CHECK changes. |
 | B4: morph map ignored | Fixed and independently reviewed;18 mapped sender/operation/key cases pass. Existing historical data is not silently rewritten. |
@@ -123,14 +128,15 @@ neither an archive-command failure nor successful staging is claimed as that pas
 
 ## Remaining external and final gates
 
-- Live single/bulk/reference confirmation is owner-deferred until after
-  publication in a test Laravel app. It remains unverified evidence, not a
-  pre-publication gate; sanitized future captures must not be replaced by fakes.
+- Basic live single/bulk/reference confirmation is complete after publication,
+  including owner-confirmed handset receipt. The broader T-07 balance/callback/
+  idempotency questions are not established by this successful run.
 - Historical recipient retention is accepted by the owner; preserve current
   redactions and do not rewrite history.
 - Commit/push, full remote CI and tagged-distribution verification are now
-  authorized. Actual results belong in the release execution record. Public
-  visibility and Packagist account operations remain separate account steps.
+  authorized and completed. The owner also published publicly; actual public
+  install/live test results are in the live validation record. Automatic-update
+  account configuration remains unverified.
 - Complete remote matrix and tagged-distribution gates are now closed on
   `e57ee40`/`v1.0.0-rc1`; all14 jobs pass. Earlier local matrix limits and the
   delegated approval-review quota interruption are historical, superseded by
@@ -148,16 +154,18 @@ polling, active precedence, callback hooks, resend counters or a history table.
 1. Local implementation, independent review, root Laravel12 gate, two13
    dependency graphs, fresh12/13 applications, real databases and controlled
    distribution checks are complete. Use their bounded evidence above.
-2. Owner defers live verification until after publication and accepts the
-   historical recipient; no further decision is needed on either for this task.
-3. With the owner's authorization, commit/push the reviewed source/tests,
-   required configuration and approved documentation/directives, preserving
-   packet provenance. [Commit directives](../../../.agents/commit_directives.md)
-   require: "Create a commit only when the project owner authorizes it."
+2. Owner accepts the historical recipient. The post-publication basic live
+   verification is complete, including handset receipt of all four messages.
+3. Authorized release source/tests, required configuration and approved
+   documentation/directives were committed and pushed, preserving packet
+   provenance. Publication/live-validation notes form a separate documentation
+   update authorized by the owner.
+   [Commit directives](../../../.agents/commit_directives.md) require:
+   "Create a commit only when the project owner authorizes it."
 4. Complete: remote matrix/audits passed on the exact tagged commit; actual
    remote distribution and tagged installs passed. Final documentation evidence
    is committed separately after the tag without changing that accepted tag.
-5. Confirm public repository/Packagist maintainer access and obtain publication
-   authorization, then publish the release candidate. Promote to stable only
-   after its feedback and repeated exact-release checks pass. Use the
-   [publication checklist](../reviews/packagist-publication-checklist.md).
+5. Owner publication, public installation and basic live tests are complete.
+   Further account/update configuration and any stable promotion are separate
+   follow-ups. Use the [publication checklist](../reviews/packagist-publication-checklist.md)
+   and the live validation record; do not re-run accepted live sends automatically.
