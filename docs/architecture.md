@@ -14,18 +14,17 @@ that history and govern every change in this package:
    the `clientsmsid` round-trip) lives in `TextSmsGateway`. Consumers, the
    channel, and other providers never know about it.
 2. **The gateway emits events, never reaches into application domain.**
-   Receipt-side reconciliation, audit logging, resend logic — all live in
-   consumer-side listeners. The gateway has no `App\Models\Receipt`
+   Outbound audit and alerting can live in consumer listeners.
+   Delivery callbacks invoke no application actions. The gateway has no `App\Models\Receipt`
    coupling.
 3. **Two exception classes split caller-fault from provider-fault.**
    `SmsDispatchException` for bad input (phone, body, bulk size limit);
    `SmsProviderException` for everything the provider does. Ops dashboards
    can filter outage signal from code-quality signal.
-4. **`sms_dispatches` is the source of truth.** Any caller-side
-   denormalisation (e.g. a receipt's `sms_status` column) is mirrored from
-   this table via an event listener — never written by the gateway.
+4. **`sms_dispatches` records submission attempts.** Callback payloads are
+   informational and do not change submission state or timestamps.
 5. **Tests are the contract.** Every behavioural change ships with at
-   least one regression test. CI enforces 52+ Pest assertions, PHPStan
+   least one regression test. Local checks use Pest, PHPStan
    level 8, and Pint code-style on every PR.
 
 ## Module map
@@ -54,7 +53,7 @@ src/
 ├── Events/
 │   ├── SmsDispatchAccepted         # status: pending → sent
 │   ├── SmsDispatchFailed           # status: pending → failed
-│   └── SmsDeliveryReported         # DLR ingest
+│   └── SmsDeliveryReported         # legacy class, not emitted
 ├── Exceptions/
 │   ├── SmsDispatchException        # caller fault
 │   └── SmsProviderException        # provider fault (carries providerCode + providerErrors)
@@ -89,46 +88,45 @@ TextSmsGateway::send()
 3. Pre-insert sms_dispatches row (status=pending)
 4. POST to /api/services/sendsms/
 5. parseSendResponse() → Shape A / Shape B / Shape C
-   ├─ Shape A + code=200 → markSent → SmsDispatchAccepted
+   ├─ usable success → markSent → SmsDispatchAccepted
    └─ otherwise         → markFailed → SmsDispatchFailed → throw SmsProviderException
 ```
 
-## Lifecycle: inbound DLR
+Acceptance requires successful HTTP status, code 200, a usable provider ID
+and unambiguous request/response correlation. A code alone is insufficient.
+Unknown outcomes are saved as failed while retaining uncertainty in diagnostics.
 
+## Lifecycle: inbound delivery report
+
+```text
+POST {prefix}/textsms/dlr?token=...
+  -> VerifyTextSmsCallback (constant-time secret comparison)
+  -> throttle:textsms-dlr (600 authenticated callbacks/minute by default)
+  -> controller strips token and validates messageid/status shapes
+  -> recorder finds TextSMS dispatch by provider_message_id
+  -> writes only dlr_payload, with model events and timestamps suppressed
+  -> HTTP 200 (unknown IDs also acknowledged; storage failures propagate)
 ```
-TextSMS portal posts to: POST {prefix}/textsms/dlr?token=...
-                         │
-                         ▼
-VerifyTextSmsCallback (constant-time token check)
-   ├─ missing/wrong token → 401
-   └─ unconfigured secret  → 500
-                         │
-                         ▼
-TextSmsCallbackController::dlr()
-   ├─ missing messageid → 422
-   └─ ok                → SmsDeliveryReportProcessor::recordDeliveryReport()
-                                    │
-                                    ▼
-                          TextSmsGateway::recordDeliveryReport()
-                                    │
-                                    ▼
-1. Lookup SmsDispatch by provider_message_id
-   └─ unknown → log + return null (200 to provider so it stops retrying)
-2. classifyDeliveryReportStatus($rawStatus)
-   ├─ undeliver/fail/expir/reject → 'failed'  (checked FIRST so "undelivered" doesn't match "deliver")
-   ├─ deliver/delivrd/deliv       → 'delivered'
-   └─ else                        → 'unknown' (persist payload, leave status)
-3. Update dispatch row + dlr_payload
-4. SmsDeliveryReported::dispatch(...)
-                                    │
-                                    ▼
-your application's listener → reconciles domain state
-```
+
+No classification, precedence engine, delivery event, observer or application
+action runs. Repeated/reordered callbacks simply replace the informational
+payload. Submission status and timestamps remain unchanged.
+See [webhooks](webhooks.md) for configuration and live-provider limitations.
+
+## Send retries
+
+Single and bulk sends allow at most two Laravel-layer HTTP attempts: the
+initial request and one retry after structured cURL 6/7 DNS/connect evidence.
+Timeouts, empty replies, HTTP responses and context-free failures are not
+retried. Send redirects are disabled to prevent hidden POST forwarding.
+Balance retry behavior remains separate and unchanged. This is not an
+on-wire exactly-once guarantee. See [operations](operations.md).
 
 ## Three response shapes the parser handles
 
-TextSMS emits two distinct response shapes plus an implicit third when
-something unexpected happens on the wire. `parseSendResponse()` and
+The parser supports the two response shapes in the bundled documentation and
+synthetic fixtures, plus an implicit third for unexpected replies. Current
+candidate live-provider captures remain pending. `parseSendResponse()` and
 `parseBulkResponse()` reduce all three into a uniform internal outcome so
 `send()`/`sendBulk()` stay flat.
 

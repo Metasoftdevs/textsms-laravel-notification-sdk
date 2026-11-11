@@ -1,3 +1,10 @@
+> Historical extraction plan. The owner-approved November 9 resolutions
+> supersede its delivery transitions/events, broad retry and default throttle
+> proposals. Current behavior: passive callback payloads, one cURL 6/7 retry,
+> authenticated configurable 600/minute limiter. See [webhooks](webhooks.md),
+> [events](events.md) and [operations](operations.md). Examples below are
+> historical design context, not current implementation instructions.
+
 # Implementation Plan: Publish `metasoftdevs/textsms-laravel-notification-sdk`
 
 ## Context
@@ -527,7 +534,7 @@ tests/Unit/Sms/PhoneNumberTest.php
 4. **Documentation pass.** README quickstart, then `docs/*.md` files in order.
 5. **CI.** GitHub Actions matrix for PHP 8.2/8.3 × Laravel 12.* stable.
 6. **Tag `v1.0.0-rc1`** and publish to a draft Packagist mirror or your own private registry for smoke install in a fresh Laravel 12 app.
-7. **Smoke install in a throwaway Laravel 12 project.** Follow the README quickstart end-to-end. Send one real SMS to `0722809376` (the test recipient already approved for QPIMS-side testing) via `textsms:test`. Configure DLR. Confirm a real delivery report flips the `sms_dispatches` row to `delivered`.
+7. **Smoke install in a throwaway Laravel 12 project.** Follow the README quickstart end-to-end. Send one real SMS to `07XXXXXXXX` (the test recipient already approved for QPIMS-side testing) via `textsms:test`. Configure DLR. Confirm a real delivery report flips the `sms_dispatches` row to `delivered`.
 8. **Migrate QPIMS** to consume the SDK. Drop `app/Services/Sms/`, `app/Notifications/Channels/SmsChannel.php`, the SMS controller, the SMS middleware, the SMS migration, and the SMS test files. Replace with a Listener in `app/Listeners/SyncReceiptFromSmsDelivery.php` that handles the SDK's `SmsDeliveryReported` event. Re-run the QPIMS full suite — expect identical 91/272 pass count because every Receipt-side test stays in QPIMS.
 9. **Tag `v1.0.0`.** Push to Packagist.
 
@@ -541,7 +548,7 @@ End-to-end acceptance test for the SDK before release:
 2. Inside the SDK repo: `composer phpstan` → level 8 clean.
 3. Inside the SDK repo: `composer pint --test` → clean.
 4. Inside a throwaway `laravel new sms-smoke` project: `composer require metasoftdevs/textsms-laravel-notification-sdk:^1.0.0-rc1` → installs without conflicts.
-5. README quickstart steps 1–7 → real SMS delivered to `0722809376` AND `sms_dispatches` row populated with `provider_message_id`.
+5. README quickstart steps 1–7 → real SMS delivered to `07XXXXXXXX` AND `sms_dispatches` row populated with `provider_message_id`.
 6. Configure DLR URL on TextSMS portal → wait < 5 min → `sms_dispatches.status` flips from `sent` to `delivered`.
 7. Inside the throwaway project, write a 20-line notification using `via(['sms'])` and `toSms()` returning `new SmsMessage(__('demo.body', ['name' => $notifiable->name]))`. Send it. Confirm SMS arrives.
 8. Inside the QPIMS branch that migrates to the SDK: `php artisan test tests/Feature/Sms tests/Feature/Api/SmsCallbackTest.php tests/Unit/Sms tests/Feature/ReceiptServiceTest.php tests/Feature/ReceiptDetailLivewireTest.php tests/Feature/Admin/ReceiptControllerTest.php` → **91 passed, 272 assertions** (identical to current QPIMS baseline).

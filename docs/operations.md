@@ -22,21 +22,30 @@ Cron this weekly and alert when balance drops below a threshold:
 php artisan tinker --execute="echo \App\MetaSoftDevs\TextSmsLaravelNotificationSdk\Models\SmsDispatch::query()->where('created_at', '>', now()->subHour())->groupBy('status')->selectRaw('status, count(*) as count')->pluck('count', 'status');"
 ```
 
-### Stuck rows (sent ≥ 24h, no DLR)
+### Accepted submissions without callback information after 24 hours
 
 ```sql
 SELECT id, ulid, recipient, provider_message_id, sent_at
 FROM sms_dispatches
 WHERE status = 'sent'
-  AND delivered_at IS NULL
+  AND dlr_payload IS NULL
   AND sent_at < NOW() - INTERVAL '24 hours'
 ORDER BY sent_at;
 ```
 
-If this query returns rows, either:
-- The DLR webhook URL is misconfigured on the provider portal.
+If this query returns rows, investigate:
+
+- Whether push reports are supported and enabled for the account, and
+  whether their method/schema matches the SDK endpoint. The live provider
+  contract is unconfirmed in this checkout; see [webhooks](webhooks.md).
+- The registered callback URL and account configuration.
 - The provider's DLR queue is backed up.
 - The webhook secret rotated and the portal has the stale value.
+- A report arrived before the send result's provider ID was saved and
+  could not be matched. No polling/reconciliation command is shipped yet.
+
+These are diagnostic possibilities, not evidence that a particular cause
+occurred or that an SMS was not sent. Preserve uncertainty before resending.
 
 ## Inspecting a single dispatch
 
@@ -53,11 +62,26 @@ The retry semantics depend on **why** a dispatch failed:
 
 | `response_code` | Recommended action |
 |---|---|
-| `1003` Validation Errors | Fix the sender ID / payload, then retry. |
+| Confirmed refusal `1003` | Correct the mobile number before considering a new attempt. |
 | `1004` Low bulk credits | Top up credits, then retry. |
 | `1006` Invalid credentials | Rotate API key. **Do not retry.** |
-| HTTP transport / 5xx | Safe to retry immediately. |
-| `unparseable` | Inspect `metadata.provider_diagnostics.raw_body_truncated`, fix root cause. |
+| HTTP transport / 5xx | Outcome may be unknown. Reconcile before resending. |
+| Unparseable or uncertain correlation | Inspect `metadata.provider_diagnostics`; do not resend automatically. |
+
+Check `metadata.provider_diagnostics.provider_acceptance` before retrying.
+`unknown` means TextSMS may have accepted the SMS. A `failed` row or a
+provider-looking code alone does not prove refusal: contradictory envelopes
+and incomplete correlation retain unknown acceptance. Recording exceptions
+can also follow accepted sends; follow their recovery message. Existing
+send policy permits one additional Laravel HTTP attempt, after 200ms,
+only when structured cURL context proves DNS resolution/connect failure
+(error 6/7). A timeout, empty reply, TLS failure, context-free exception or
+received HTTP response is not automatically retried. Send redirects are
+disabled. Balance retry behavior is unchanged.
+
+This bounds package/Laravel retries, not every possible lower-level
+transport action: installed Guzzle has its own internal recovery behavior.
+It does not establish exactly-once delivery or provider idempotency.
 
 A simple retry recipe:
 
@@ -74,6 +98,9 @@ SmsDispatch::query()
     ->where('created_at', '>', now()->subHours(2))
     ->chunkById(50, function ($rows) use ($sender): void {
         foreach ($rows as $row) {
+            if (data_get($row->metadata, 'provider_diagnostics.provider_acceptance') !== 'rejected') {
+                continue; // uncertainty is not permission to resend
+            }
             $sender->send(
                 recipient: $row->recipient,
                 message: new SmsMessage(
@@ -93,9 +120,10 @@ Wrap this in a custom artisan command to suit your retry policy.
 1. Generate a new secret: `php -r "echo bin2hex(random_bytes(32));"`
 2. Update `.env` with the new `TEXTSMS_DLR_SECRET`.
 3. `php artisan config:clear`.
-4. Update the TextSMS portal "Callback URL" to use the new `?token=...`.
-5. Watch the log for `401` responses for a few minutes — they indicate
-   the portal hasn't picked up the new value yet.
+4. Update the account-confirmed callback registration to send the new
+   token through its supported query-token or header mechanism.
+5. Investigate `401` responses as authentication failures. A stale
+   registration is one possible cause; a 401 does not prove propagation lag.
 
 ## Rotating the API key
 
@@ -119,17 +147,21 @@ Wrap this in a custom artisan command to suit your retry policy.
    ```
 2. Inspect it: `php artisan textsms:dispatch:show {ulid}`.
 3. Branch on `status`:
-   - `pending` → never made it past `preInsert`. Check application logs.
-   - `failed`  → provider rejected. `response_code` and
-     `metadata.provider_diagnostics` say why.
-   - `sent`    → provider accepted but no DLR yet. Could be the carrier
-     queue or a misconfigured webhook.
-   - `delivered` → handset confirmed receipt. The customer either missed
-     it or the number is wrong.
+   - `pending` → preparation completed, but the final outcome was not
+     recorded. A crash or recording failure may have followed a real send;
+     inspect recovery logs and reconcile before resending.
+   - `failed` → local unsuccessful attempt, provider refusal, or
+     unknown acceptance. Check `response_code`, `dlr_payload`, and
+     `metadata.provider_diagnostics`; unknown acceptance can still mean sent.
+   - `sent` → provider accepted the submission. Inspect `dlr_payload` for
+     informational callback data; it does not change this status or prove
+     delivery. A missing callback does not prove non-delivery.
+   - Legacy `delivered`/`rejected` rows remain readable. New callbacks do not
+     produce these states or update delivery/failure timestamps.
 
 ## Monitoring listeners
 
-Wire ops alerts to the three events:
+Wire ops alerts to outbound submission events:
 
 ```php
 // EventServiceProvider

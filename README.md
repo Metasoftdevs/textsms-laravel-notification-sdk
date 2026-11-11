@@ -1,6 +1,6 @@
 # textsms-laravel-notification-sdk
 
-> Drop-in Laravel notification channel for **TextSMS** (`https://sms.textsms.co.ke`) with a provider-agnostic gateway, event-driven delivery reconciliation, pluggable phone-number normalisation, and an honest test scaffold.
+> Drop-in Laravel notification channel for **TextSMS** (`https://sms.textsms.co.ke`) with a provider-agnostic gateway, outbound lifecycle events and informational delivery reports, pluggable phone-number normalisation, and an honest test scaffold.
 
 [![Packagist](https://img.shields.io/packagist/v/metasoftdevs/textsms-laravel-notification-sdk.svg)](https://packagist.org/packages/metasoftdevs/textsms-laravel-notification-sdk)
 [![Tests](https://github.com/Metasoftdevs/textsms-laravel-notification-sdk/actions/workflows/tests.yml/badge.svg)](https://github.com/Metasoftdevs/textsms-laravel-notification-sdk/actions/workflows/tests.yml)
@@ -8,8 +8,14 @@
 
 | Requirement | Version |
 |---|---|
-| PHP | `^8.2` |
-| Laravel | `^12.0` |
+| PHP | `^8.2` for Laravel 12; `^8.3` for Laravel 13 |
+| Laravel | `^12.0` or `^13.0` |
+
+Run this package in a full Laravel application (`laravel/framework`). Its
+event, queue and controller integration uses `Illuminate\Foundation` and
+`Illuminate\Queue`; installing individual Illuminate components alone is
+not a supported runtime. The supported dependency graphs and release checks
+must pass before tagging; newer framework majors require their own verification.
 
 ---
 
@@ -29,6 +35,12 @@ php artisan vendor:publish --tag=textsms-migrations
 php artisan migrate
 ```
 
+Publish the creation migration **once**. Laravel's migration-date setting
+controls its filename; publishing again is not an upgrade strategy or a
+duplicate-safe operation. Before migrating, configure the host's UUID/ULID
+morph key type if required. Existing development installations need the
+forward-schema guidance in [the upgrade guide](docs/upgrade-guide.md).
+
 ### 3. Set credentials in `.env`
 
 ```env
@@ -36,6 +48,7 @@ TEXTSMS_API_KEY=your-api-key-from-the-portal
 TEXTSMS_PARTNER_ID=15682
 TEXTSMS_SENDER_ID=YourSender
 TEXTSMS_DLR_SECRET=any-long-random-string
+TEXTSMS_WEBHOOK_RATE_LIMIT=600
 ```
 
 Generate the DLR secret with:
@@ -101,11 +114,19 @@ php artisan textsms:test 0712345678   # one-off send + persisted dispatch row
 php artisan textsms:balance           # current provider balance
 ```
 
-Configure the DLR callback URL on the TextSMS portal as:
+Confirm push delivery-report support and registration with TextSMS for
+your account. If its callback contract matches the SDK's POST endpoint,
+the URL is:
 
 ```
 https://yourapp.com/api/v1/sms/textsms/dlr?token={TEXTSMS_DLR_SECRET}
 ```
+
+The inherited QPIMS integration reports push callbacks, but this checkout
+has no live provider-contract fixtures. A delivery-report lookup is
+described in the bundled provider PDF; an SDK polling command is not yet
+implemented. See [delivery-report support and verification](docs/webhooks.md)
+before relying on callback delivery.
 
 ---
 
@@ -135,7 +156,7 @@ Notification::send($user, new OrderShipped(...))
                                           └─► SmsDispatchAccepted event ──► your audit listeners
 
                                           ▼
-                          TextSMS portal posts DLR back to
+                          If account push is confirmed:
                           POST /api/v1/sms/textsms/dlr?token=...
                                           │
                                   VerifyTextSmsCallback middleware
@@ -144,9 +165,9 @@ Notification::send($user, new OrderShipped(...))
                                           │
                                   SmsDeliveryReportProcessor (interface) ──► TextSmsGateway impl
                                           │
-                                  status: sent → delivered/failed
+                                  dlr_payload: sanitized latest report
                                           │
-                                          └─► SmsDeliveryReported event ──► your domain listeners
+                                          └─► informational storage only; no events or application actions
 ```
 
 Three load-bearing decisions:
@@ -158,10 +179,10 @@ Three load-bearing decisions:
    mirrors Laravel's `MailMessage` shape — content only, no recipient.
    Recipient resolution lives on the notifiable via
    `routeNotificationForSms()`.
-3. **`sms_dispatches` is the source of truth for delivery state.** Three
-   events (`SmsDispatchAccepted`, `SmsDispatchFailed`, `SmsDeliveryReported`)
-   surface every transition so consumers can reconcile their own domain
-   (receipts, orders, OTP bookkeeping, etc.) without touching the gateway.
+3. **`sms_dispatches` records submission attempts.** Outbound accepted/failed
+   events support audit and alerting. Delivery callbacks only replace
+   `dlr_payload`, preserving submission state and timestamps without events
+   or application actions.
 
 See [`docs/architecture.md`](docs/architecture.md) for the full deep-dive.
 
@@ -196,7 +217,8 @@ return [
     'webhook' => [
         'enabled'    => (bool) env('TEXTSMS_WEBHOOK_ENABLED', true),
         'url_prefix' => env('TEXTSMS_WEBHOOK_PREFIX', 'api/v1/sms'),
-        'middleware' => ['throttle:60,1'],
+        'rate_limit_per_minute' => (int) env('TEXTSMS_WEBHOOK_RATE_LIMIT', 600),
+        'middleware' => [],
     ],
 ];
 ```
@@ -208,8 +230,7 @@ return [
 | Event | Fired when | Carries |
 |---|---|---|
 | `SmsDispatchAccepted` | Provider accepted a dispatch (`status` flipped to `sent`). | `SmsDispatch` |
-| `SmsDispatchFailed`   | Provider rejected (any non-200), transport error, or unparseable response. | `SmsDispatch`, `providerCode`, `providerDescription`, `providerErrors`, `parseSource` |
-| `SmsDeliveryReported` | DLR webhook posted a delivery report. | `SmsDispatch`, `deliveryStatus` (`delivered`\|`failed`\|`unknown`), `rawStatus`, raw `payload` |
+| `SmsDispatchFailed`   | An unsuccessful outbound attempt was recorded, including confirmed refusal or unknown acceptance. A failed row does not establish safe resend. | `SmsDispatch`, `providerCode`, `providerDescription`, `providerErrors`, `parseSource` |
 
 Subscribe listeners in your app's `EventServiceProvider`:
 
@@ -221,13 +242,15 @@ protected $listen = [
     \MetaSoftDevs\TextSmsLaravelNotificationSdk\Events\SmsDispatchFailed::class => [
         \App\Listeners\AlertOpsOnSmsFailure::class,
     ],
-    \MetaSoftDevs\TextSmsLaravelNotificationSdk\Events\SmsDeliveryReported::class => [
-        \App\Listeners\SyncReceiptFromSmsDelivery::class,
-    ],
 ];
 ```
 
-Full event documentation in [`docs/events.md`](docs/events.md).
+`SmsDeliveryReported` is retained for compatibility but is no longer emitted.
+Send retries allow one additional Laravel HTTP attempt only for proven cURL
+6/7 DNS/connect failures. Responses and ambiguous failures are not retried;
+redirects are disabled for sends. Other failures retain existing diagnostics.
+Full details: [events](docs/events.md), [webhooks](docs/webhooks.md),
+[retry handling](docs/operations.md).
 
 ---
 
@@ -249,7 +272,11 @@ it('sends a receipt SMS when a payment lands', function () {
 
 `FakeSmsGateway` implements both `SmsSender` and
 `SmsDeliveryReportProcessor`, persists `sms_dispatches` rows, and fires
-the real events — so listener-side reconciliation also runs in tests.
+outbound accepted events. It ignores delivery reports; it does not simulate
+live provider retry or callback behavior. It validates recipients/body/bulk
+input, persists failed simulations, and clears cached SMS drivers on install.
+Install it in a booted Laravel application with its test database migrated;
+storage failures propagate rather than being replaced with in-memory rows.
 
 ---
 

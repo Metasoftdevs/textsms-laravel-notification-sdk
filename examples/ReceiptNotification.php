@@ -20,11 +20,15 @@ use MetaSoftDevs\TextSmsLaravelNotificationSdk\Messages\SmsMessage;
  *  - `toSms()` returning an `SmsMessage` DTO.
  *  - Per-message `clientReference` so the persisted `sms_dispatches.client_message_id`
  *    can be matched back to the receipt without a join.
- *  - `metadata.receipt_id` so a domain-side listener subscribing to
- *    `SmsDeliveryReported` can reconcile `receipts.sms_delivered_at`
- *    when the DLR lands.
+ *  - `metadata.receipt_id` to correlate an outbound submission with the
+ *    receipt. Delivery callbacks only store the latest sanitized payload;
+ *    they do not update receipt/dispatch state or timestamps, invoke model
+ *    observers or emit `SmsDeliveryReported`.
  *  - `ShouldQueue` so SMTP + SMS dispatch run in the worker rather than
- *    the request lifecycle.
+ *    the request lifecycle. Dispatch after the business transaction commits
+ *    (for example `$user->notify((new ReceiptNotification(...))->afterCommit())`).
+ *    Queue retries do not establish provider idempotency; inspect uncertain
+ *    outcomes before submitting another SMS. See `docs/queueing.md`.
  *
  * Mirror this shape for your own domain notifications (orders, KYC
  * approvals, contract signatures, etc.).

@@ -73,12 +73,13 @@ final class AfricasTalkingGateway implements SmsSender
 
 ## 2. (Optional) implement `SmsDeliveryReportProcessor`
 
-If the provider posts DLR callbacks and you want them reconciled into
-`sms_dispatches`, implement the second contract on the same class:
+If the provider posts callbacks, implement the second contract as a passive
+payload recorder on the same class. Do not change submission state or invoke
+model observers/events. The following skeleton assumes sanitized, validated
+input; adapt field names at your provider's HTTP boundary:
 
 ```php
 use MetaSoftDevs\TextSmsLaravelNotificationSdk\Contracts\SmsDeliveryReportProcessor;
-use MetaSoftDevs\TextSmsLaravelNotificationSdk\Events\SmsDeliveryReported;
 
 final class AfricasTalkingGateway implements SmsSender, SmsDeliveryReportProcessor
 {
@@ -92,32 +93,22 @@ final class AfricasTalkingGateway implements SmsSender, SmsDeliveryReportProcess
             return null;
         }
 
-        $dispatch = SmsDispatch::query()
-            ->where('provider', self::PROVIDER)
-            ->where('provider_message_id', $messageId)
-            ->first();
+        return SmsDispatch::withoutEvents(fn () => SmsDispatch::withoutTimestamps(function () use ($messageId, $payload) {
+            $dispatch = SmsDispatch::query()
+                ->where('provider', self::PROVIDER)
+                ->where('provider_message_id', $messageId)
+                ->first();
 
-        if ($dispatch === null) {
-            return null;
-        }
+            if ($dispatch === null) {
+                return null;
+            }
 
-        $rawStatus = strtolower((string) ($payload['status'] ?? ''));
-        $deliveryStatus = match (true) {
-            str_contains($rawStatus, 'success') => 'delivered',
-            str_contains($rawStatus, 'failed')  => 'failed',
-            default                             => 'unknown',
-        };
+            if (! $dispatch->update(['dlr_payload' => $payload])) {
+                throw new \RuntimeException('Delivery report could not be recorded.');
+            }
 
-        $dispatch->update([
-            'status' => $deliveryStatus === 'delivered' ? 'delivered' : $dispatch->status,
-            'delivered_at' => $deliveryStatus === 'delivered' ? now() : $dispatch->delivered_at,
-            'failed_at' => $deliveryStatus === 'failed' ? now() : $dispatch->failed_at,
-            'dlr_payload' => $payload,
-        ]);
-
-        SmsDeliveryReported::dispatch($dispatch->refresh(), $deliveryStatus, $rawStatus, $payload);
-
-        return $dispatch;
+            return $dispatch;
+        }));
     }
 }
 ```
@@ -156,48 +147,23 @@ $this->app->singleton(\App\Sms\Gateways\AfricasTalkingGateway::class, fn ($app) 
 );
 ```
 
-## 4. Multi-provider failover (extension recipe — not shipped)
+## 4. Multi-provider failover (not shipped)
 
-If you need a fallback chain, wrap multiple senders with a thin
-`FailoverSmsSender`:
+A provider exception alone is not permission to send through another
+provider. It can follow an accepted send whose local recording failed, or
+an unknown transport/response outcome. A blind catch-and-continue chain can
+send duplicate messages and is intentionally not provided here.
 
-```php
-final class FailoverSmsSender implements SmsSender
-{
-    /** @param list<SmsSender> $senders Tried in order until one succeeds. */
-    public function __construct(private readonly array $senders) {}
-
-    public function send(string $recipient, SmsMessage $message, ?Model $notifiable = null): SmsDispatch
-    {
-        $last = null;
-        foreach ($this->senders as $sender) {
-            try {
-                return $sender->send($recipient, $message, $notifiable);
-            } catch (SmsProviderException $e) {
-                $last = $e;
-                continue;
-            }
-        }
-        throw $last ?? new SmsProviderException('All providers exhausted.');
-    }
-    // sendBulk + balance similarly delegate.
-}
-```
-
-Bind in `AppServiceProvider`:
-
-```php
-$this->app->bind(SmsSender::class, fn ($app) => new \App\Sms\FailoverSmsSender([
-    $app->make(\MetaSoftDevs\TextSmsLaravelNotificationSdk\Gateways\TextSmsGateway::class),
-    $app->make(\App\Sms\Gateways\AfricasTalkingGateway::class),
-]));
-```
+If the application needs fallback, establish a provider-specific proof that
+the previous attempt was not accepted, retain the diagnostic/recording
+context, and authorize the new attempt under application policy. Do not
+automatically fail over unknown or accepted outcomes. No general failover
+or retry-policy abstraction is needed for the default gateway.
 
 ## 5. Test your implementation against the same regression set
 
-Copy the gateway test file from this package and adapt the
-`Http::fake([...])` URLs to match your provider. The 15 cases (happy
-path, low-credit response, validation 422, unparseable 503, bulk
-matching, bulk validation rejection, DLR happy / failed / unknown,
-balance) are the **minimum** coverage for a production provider
-adapter.
+Adapt this package's gateway, correlation, preparation, retry and passive
+callback regressions to the provider's actual contract. Cover happy paths,
+refusal and unknown outcomes, invalid input, bulk matching/ambiguity,
+recording failures, listener isolation, bounded retries and balance. Use
+sanitized wire fixtures before making live-provider guarantees.

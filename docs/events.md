@@ -1,195 +1,114 @@
 # Events
 
-Three Laravel events are dispatched by the gateway to surface every
-delivery-lifecycle transition. **Consumers wire their own audit,
-domain-reconciliation, and alerting logic by subscribing listeners — the
-package itself never subscribes to its own events.**
+The default gateway emits two outbound Laravel events after recording
+submission outcomes. Delivery callbacks are informational: they emit no
+SDK or Eloquent events and invoke no application actions. See
+[webhooks](webhooks.md).
 
 ## Catalogue
 
-### `SmsDispatchAccepted`
-
-Fired the moment the provider accepts a dispatch — i.e. the row has just
-transitioned from `pending` to `sent` and carries a `provider_message_id`.
-
-| Property | Type | Notes |
+| Event | When | Properties |
 |---|---|---|
-| `$dispatch` | `SmsDispatch` | The persisted row in its post-accept state. |
+| `SmsDispatchAccepted` | An accepted outcome was saved as `sent`. | `$dispatch`: `SmsDispatch` |
+| `SmsDispatchFailed` | An unsuccessful outcome was saved as `failed`. | `$dispatch`, nullable `$providerCode`, `$providerDescription`, `$providerErrors`, `$parseSource` |
 
-### `SmsDispatchFailed`
+A failed event includes confirmed refusal and unknown acceptance. It does
+not prove that nothing was sent. Read
+`metadata.provider_diagnostics.provider_acceptance` before considering a new
+send; an observed provider code alone is insufficient.
 
-Fired when the provider rejects a dispatch (any non-200 code, validation
-error, transport failure, or unparseable response).
+Normal sources are `responses` and `top-level`. Unknown-response sources
+include `unparseable`, `unmatched`, `malformed-response`,
+`duplicate-client-id`, `duplicate-provider-id`, `invalid-message-id` and
+`http-error`. Transport failures have a null parse source. Unexpected extra
+references generate a bounded warning without invalidating unrelated rows.
 
-| Property | Type | Notes |
-|---|---|---|
-| `$dispatch` | `SmsDispatch` | The persisted row in its `failed` state. |
-| `$providerCode` | `?string` | Provider error code, e.g. `1004`. |
-| `$providerDescription` | `?string` | Human-readable description from the provider. |
-| `$providerErrors` | `?array` | Structured `errors` map from validation responses (HTTP 422 shape). |
-| `$parseSource` | `?string` | `'responses'` \| `'top-level'` \| `'unparseable'`. |
+`SmsDeliveryReported` remains loadable for source and queued-event
+compatibility, but the default gateway no longer emits it. Existing delivery
+listeners receive no new callback events. Previously queued events can still
+execute under the host's queue policy; deployment does not cancel jobs.
+Callbacks neither classify delivery outcomes nor update application state.
 
-### `SmsDeliveryReported`
+## Recording and listener failures
 
-Fired each time the DLR webhook posts a delivery report against a
-previously dispatched message.
+For `send()` and `sendBulk()`, outcomes are recorded before events.
+Recording is attempted for every bulk row before the first event; events
+run in input order, only for successfully saved rows.
 
-| Property | Type | Notes |
-|---|---|---|
-| `$dispatch` | `SmsDispatch` | The persisted row in its post-DLR state. |
-| `$deliveryStatus` | `string` | `'delivered'` \| `'failed'` \| `'unknown'`. |
-| `$rawStatus` | `string` | Lowercased status string straight from the provider payload. |
-| `$payload` | `array` | Full decoded JSON the provider posted. |
+Immediate listener exceptions are reported to the application's exception
+handler and contained. They cannot rewrite a sent row, replace a provider
+exception or stop events for subsequent bulk rows. Reporter failures are
+also contained. If both reporting and logging fail, no trace may remain.
 
-## Wiring listeners
+Laravel stops an event's remaining synchronous listeners when one throws.
+A later queued listener may therefore never be enqueued. Publication is
+best effort, without a durable outbox. Essential listeners should contain
+their own failures or be registered before listeners that can fail.
+
+After-commit listeners, queue submission deferred until commit, and queue
+workers run outside immediate dispatch isolation. Their failures follow
+host/queue handling. Do not resend an SMS because deferred application work
+failed: the send and database commit may already have happened.
+
+If an outbound outcome cannot be saved, no event fires for that row and
+`SmsProviderException` preserves the storage cause and recovery guidance:
+
+- Accepted: the SMS was sent; do not resend.
+- Unknown: the SMS may have been sent; do not resend automatically. This
+  includes malformed/codeless/unmatched output and codes such as `1005`,
+  `1007` and `4090` that do not establish send refusal.
+- Rejected: a usable refusal with one of `1001`, `1002`, `1003`, `1004`,
+  `1006`, `1009`, `1010`, `4091`, `4092` establishes rejection.
+
+The gateway attempts an error log containing recovery identifiers and
+`provider_acceptance`. Logging is best effort: its failure cannot replace
+the recording exception. These guarantees apply to `send()`/`sendBulk()`.
+
+## Registering listeners
 
 ```php
-// app/Providers/EventServiceProvider.php
-
-use MetaSoftDevs\TextSmsLaravelNotificationSdk\Events\SmsDeliveryReported;
 use MetaSoftDevs\TextSmsLaravelNotificationSdk\Events\SmsDispatchAccepted;
 use MetaSoftDevs\TextSmsLaravelNotificationSdk\Events\SmsDispatchFailed;
 
+// app/Providers/EventServiceProvider.php
 protected $listen = [
     SmsDispatchAccepted::class => [\App\Listeners\LogSmsAccepted::class],
-    SmsDispatchFailed::class   => [\App\Listeners\AlertOpsOnSmsFailure::class],
-    SmsDeliveryReported::class => [\App\Listeners\SyncReceiptFromSmsDelivery::class],
+    SmsDispatchFailed::class => [\App\Listeners\AlertOpsOnSmsFailure::class],
 ];
 ```
 
-## Listener examples
+Listeners can implement Laravel's `ShouldQueue` and set
+`public bool $afterCommit = true;` when the host wraps SDK calls in a
+transaction. This prevents workers reading uncommitted rows but does not
+make an external SMS transactional. Prefer starting outbound work after
+the business transaction commits. `sent` means provider acceptance, not
+confirmed handset delivery.
 
-### Example 1 — audit log on every accept / fail
+## Queued event restoration
 
-```php
-// app/Listeners/LogSmsAccepted.php
-namespace App\Listeners;
+Event classes use `SerializesModels`. A queued event stores the model
+identifier and re-fetches the current dispatch when restored. Scalar fields
+retain their original values. The restored row can differ from the original.
 
-use App\Models\AuditLog;
-use MetaSoftDevs\TextSmsLaravelNotificationSdk\Events\SmsDispatchAccepted;
+Producer and worker must resolve the same database, schema and table:
+`textsms.database.connection`, `textsms.database.table`, `database.default`
+and the named connection's target configuration all matter. Changing them
+with jobs in flight can restore the same numeric ID from a different
+database/table. Drain or deliberately migrate work before changing them.
+Tenant connection restoration is application-owned.
 
-class LogSmsAccepted
-{
-    public function handle(SmsDispatchAccepted $event): void
-    {
-        AuditLog::create([
-            'kind' => 'sms.sent',
-            'subject_type' => $event->dispatch->notifiable_type,
-            'subject_id' => $event->dispatch->notifiable_id,
-            'metadata' => [
-                'sms_dispatch_ulid' => $event->dispatch->ulid,
-                'provider' => $event->dispatch->provider,
-                'provider_message_id' => $event->dispatch->provider_message_id,
-                'recipient' => $event->dispatch->recipient,
-            ],
-        ]);
-    }
-}
-```
+Retain dispatch rows through the queue delay/retry window. Missing rows fail
+restoration with `ModelNotFoundException`. A listener's
+`$deleteWhenMissingModels` does not suppress this: Laravel restores a
+`CallQueuedListener` job and applies that job class's policy.
 
-### Example 2 — page on-call for low credits
-
-```php
-// app/Listeners/AlertOpsOnSmsFailure.php
-namespace App\Listeners;
-
-use App\Notifications\PagerDutyAlert;
-use Illuminate\Support\Facades\Notification;
-use MetaSoftDevs\TextSmsLaravelNotificationSdk\Events\SmsDispatchFailed;
-
-class AlertOpsOnSmsFailure
-{
-    public function handle(SmsDispatchFailed $event): void
-    {
-        if ($event->providerCode === '1004') {
-            Notification::route('pagerduty', config('alerts.oncall_key'))
-                ->notify(new PagerDutyAlert(
-                    summary: 'SMS provider credits exhausted',
-                    severity: 'critical',
-                    custom_details: [
-                        'provider_code' => '1004',
-                        'provider_description' => $event->providerDescription,
-                    ],
-                ));
-        }
-    }
-}
-```
-
-### Example 3 — reconcile a domain row from a DLR
-
-```php
-// app/Listeners/SyncReceiptFromSmsDelivery.php
-namespace App\Listeners;
-
-use App\Models\Receipt;
-use MetaSoftDevs\TextSmsLaravelNotificationSdk\Events\SmsDeliveryReported;
-
-class SyncReceiptFromSmsDelivery
-{
-    public function handle(SmsDeliveryReported $event): void
-    {
-        $receiptId = data_get($event->dispatch->metadata, 'receipt_id');
-
-        if ($receiptId === null) {
-            return; // not a receipt-driven SMS
-        }
-
-        $receipt = Receipt::find($receiptId);
-
-        if ($receipt === null) {
-            return;
-        }
-
-        if ($event->deliveryStatus === 'delivered') {
-            $receipt->update([
-                'sms_status' => 'sent',
-                'sms_delivered_at' => $event->dispatch->delivered_at,
-            ]);
-        } elseif ($event->deliveryStatus === 'failed') {
-            $receipt->update([
-                'sms_status' => 'failed',
-                'sms_delivered_at' => null,
-                'resend_required' => true,
-                'resend_reason' => 'SMS delivery failed: '.$event->rawStatus,
-            ]);
-        }
-    }
-}
-```
-
-## Queued listeners
-
-Each event class uses `Illuminate\Foundation\Events\Dispatchable` so
-listeners can implement `ShouldQueue` to defer work to the queue:
-
-```php
-namespace App\Listeners;
-
-use Illuminate\Contracts\Queue\ShouldQueue;
-use MetaSoftDevs\TextSmsLaravelNotificationSdk\Events\SmsDeliveryReported;
-
-class HeavyDeliveryReconciliation implements ShouldQueue
-{
-    public function handle(SmsDeliveryReported $event): void
-    {
-        // ... offloaded work
-    }
-}
-```
-
-## Asserting events in tests
+## Asserting events
 
 ```php
 use Illuminate\Support\Facades\Event;
 use MetaSoftDevs\TextSmsLaravelNotificationSdk\Events\SmsDispatchAccepted;
 
 Event::fake([SmsDispatchAccepted::class]);
-
-// trigger your code path …
-
-Event::assertDispatched(
-    SmsDispatchAccepted::class,
-    fn (SmsDispatchAccepted $e): bool => $e->dispatch->recipient === '254712345678',
-);
+// Trigger an outbound send in your test.
+Event::assertDispatched(SmsDispatchAccepted::class);
 ```

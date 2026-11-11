@@ -13,17 +13,24 @@ hardening trail:
    (the `respose-code` misspelling, the response-shape matrix, the
    `clientsmsid` round-trip) lives in the concrete gateway. Consumers and the
    channel never know about it.
-2. **The gateway emits events, never reaches into application domain.**
-   Receipt-side reconciliation, audit logging, resend logic — all live in
-   consumer-side listeners, not in this package. See `docs/events.md`.
-3. **Two exception classes split caller-fault from provider-fault.**
-   `SmsDispatchException` for bad input; `SmsProviderException` for everything
-   the provider does. Don't add a third without strong justification.
-4. **`sms_dispatches` is the source of truth.** Any caller-side denormalisation
-   (e.g. a receipt's `sms_status` column) is mirrored from this table via an
-   event listener.
+2. **Outbound events stay separate from application domains.**
+   `SmsDispatchAccepted` and `SmsDispatchFailed` report recorded submission
+   outcomes. Delivery callbacks store only the sanitized latest `dlr_payload`;
+   they change no state/timestamps, emit no SDK/model events and invoke no
+   application actions. The legacy `SmsDeliveryReported` class is retained
+   without new default emission. See [events](docs/events.md).
+3. **Two exception classes preserve input and outcome distinctions.**
+   `SmsDispatchException` reports invalid input. `SmsProviderException` can
+   also carry unknown acceptance or a local recording failure; it does not
+   establish safe resend. Preserve its recovery diagnostics. Do not add
+   another exception class without a demonstrated requirement.
+4. **`sms_dispatches` records submission attempts.** Provider acceptance is
+   distinct from handset delivery. Passive callback data is informational;
+   a failed row is not proof of non-delivery or permission to retry.
 5. **Tests are the contract.** Every behavioural change ships with at least
-   one regression test. Coverage is enforced by CI.
+   one meaningful regression test. CI runs tests, static analysis, formatting,
+   manifest validation and a dependency audit; it does not enforce a measured
+   coverage threshold. Prepared workflows need actual execution evidence.
 
 ## Local setup
 
@@ -40,9 +47,14 @@ composer test      # Pest
 composer phpstan   # static analysis (level 8)
 composer pint-test # code style check (no writes)
 composer pint      # code style fix
+composer validate --strict
+composer audit --locked # after install/update creates the local lock
 ```
 
-All three must be green before a PR is merged.
+Tests, static analysis, formatting, manifest validation and the applicable
+dependency audit must pass before merge. Run the lowest/stable dependency
+graphs for every runtime major claimed by the change. Record actual results;
+a prepared workflow or widened Composer constraint is not compatibility proof.
 
 ## Branch naming
 
@@ -61,7 +73,10 @@ Conventional Commits format: `type(scope): subject`. The `scope` is one of
 
 - [ ] All CI checks green.
 - [ ] New behaviour covered by a Pest regression test.
-- [ ] If touching a provider's response shape, the test uses the **exact** wire payload from a Postman capture or live probe.
+- [ ] If touching a provider's response shape, use provenance-labelled exact
+      captured payloads where available and synthetic adversarial cases.
+- [ ] Label synthetic fixtures and unverified live-contract assumptions; do not
+      invent captures or expose credentials, recipients or message bodies.
 - [ ] Documentation updated (`docs/*.md` and/or README).
 - [ ] `CHANGELOG.md` updated under `[Unreleased]`.
 - [ ] Backwards-incompatible changes flagged with `BC BREAK:` in the PR description.

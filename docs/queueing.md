@@ -1,153 +1,78 @@
-# Queueing strategies
+# Queueing notifications
 
-By default, `TextSmsGateway::send()` makes a **synchronous HTTP call** to
-the provider. For low-volume usage this is fine; for high throughput, you
-have two options.
-
-## Pattern A: queue the notification (default Laravel behaviour)
-
-The simplest path. Add `ShouldQueue` to your notification class:
+`TextSmsGateway::send()` makes a synchronous HTTP request. To move that
+work into a worker, use Laravel's standard queued notification support:
 
 ```php
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Notification;
+use MetaSoftDevs\TextSmsLaravelNotificationSdk\Messages\SmsMessage;
 
 class OrderShipped extends Notification implements ShouldQueue
 {
     use Queueable;
-    // ... via(), toSms(), toMail()
-}
-```
 
-Laravel's notification dispatcher queues the notification; the queue
-worker invokes the SMS channel; the channel makes the HTTP call inside
-the worker. Set `QUEUE_CONNECTION=database` (or `redis`) in production.
+    public function __construct(public readonly string $trackingNumber) {}
 
-## Pattern B: a queued-sender decorator (recipe — not shipped)
-
-When you want the SMS dispatch itself wrapped in a job (regardless of
-whether the notification is queued), decorate the `SmsSender`:
-
-```php
-<?php
-
-namespace App\Sms;
-
-use App\Jobs\DispatchSmsJob;
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Collection;
-use MetaSoftDevs\TextSmsLaravelNotificationSdk\Contracts\SmsSender;
-use MetaSoftDevs\TextSmsLaravelNotificationSdk\Messages\SmsMessage;
-use MetaSoftDevs\TextSmsLaravelNotificationSdk\Models\SmsDispatch;
-
-final class QueuedSmsSender implements SmsSender
-{
-    public function __construct(private readonly SmsSender $inner) {}
-
-    public function send(string $recipient, SmsMessage $message, ?Model $notifiable = null): SmsDispatch
+    public function via(object $notifiable): array
     {
-        // Pre-insert a `pending` row synchronously so the caller has
-        // something to reference, then offload the HTTP call.
-        $row = SmsDispatch::create([
-            'provider' => 'queued',
-            'recipient' => $recipient,
-            'sender_id' => $message->senderId ?? config('textsms.providers.textsms.default_sender_id'),
-            'body' => $message->body,
-            'status' => 'pending',
-            'metadata' => $message->metadata,
-        ]);
-
-        DispatchSmsJob::dispatch($row->ulid, $recipient, $message, $notifiable?->getMorphClass(), $notifiable?->getKey());
-
-        return $row;
+        return ['sms'];
     }
 
-    public function sendBulk(array $items): Collection
+    public function toSms(object $notifiable): SmsMessage
     {
-        return collect($items)->map(fn (array $item): SmsDispatch =>
-            $this->send($item['recipient'], $item['message'], $item['notifiable'] ?? null)
+        return new SmsMessage(
+            body: __('sms.order_shipped', ['tracking' => $this->trackingNumber]),
+            clientReference: 'order-'.$this->trackingNumber,
         );
     }
-
-    public function balance(): array
-    {
-        return $this->inner->balance();
-    }
 }
+
+$user->notify((new OrderShipped('TRK-12345'))->afterCommit());
 ```
 
-The job:
+Configure a host queue connection such as `database` or `redis` and run a
+worker using `php artisan queue:work`. The `sync` connection still executes
+the notification in the current process. Laravel schedules the notification
+and invokes the SMS channel in the worker; the channel then calls the sender.
+The package adds no queued-sender decorator, placeholder dispatch row or
+automatic resend job. See the [receipt example](../examples/ReceiptNotification.php).
 
-```php
-<?php
+## Transactions and retries
 
-namespace App\Jobs;
+`afterCommit()` defers queue submission until the business transaction
+commits. A direct synchronous SMS send cannot roll back with database work.
+Making a listener run after commit solves a different boundary; it does not
+make the original send transactional.
 
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
-use MetaSoftDevs\TextSmsLaravelNotificationSdk\Contracts\SmsSender;
-use MetaSoftDevs\TextSmsLaravelNotificationSdk\Gateways\TextSmsGateway;
-use MetaSoftDevs\TextSmsLaravelNotificationSdk\Messages\SmsMessage;
-use MetaSoftDevs\TextSmsLaravelNotificationSdk\Models\SmsDispatch;
+Choose host worker timeouts, queue visibility/retry settings and deployment
+handling for the provider's HTTP budget. A worker crash, job redelivery or
+retry can invoke a notification again after an earlier send was accepted
+or became uncertain. Client references and queue uniqueness do not establish
+provider idempotency. Review the dispatch diagnostics and provider evidence
+before replaying work; do not add unconditional resend retries.
 
-class DispatchSmsJob implements ShouldQueue
-{
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+The sender's own policy allows at most two Laravel HTTP attempts, with the
+second permitted only for structured cURL 6/7 DNS/connect failures. It does
+not retry HTTP responses or ambiguous failures, and send redirects are
+disabled. This policy does not guarantee exactly-once sending or cap every
+lower-level transport action. See [operations](operations.md).
 
-    public int $tries = 3;
-    public int $backoff = 30;
+The SMS channel catches package dispatch/provider exceptions, logs them and
+returns null. Therefore a completed notification job does not prove that
+the provider accepted the SMS. Inspect the saved outcome and recovery logs;
+`failed` alone does not prove that nothing was sent.
 
-    public function __construct(
-        public readonly string $pendingDispatchUlid,
-        public readonly string $recipient,
-        public readonly SmsMessage $message,
-        public readonly ?string $notifiableType,
-        public readonly mixed $notifiableId,
-    ) {}
+## Outbound listeners and passive callbacks
 
-    public function handle(): void
-    {
-        // Resolve the real sender (the inner gateway, not the queued decorator).
-        $real = app(TextSmsGateway::class);
+Outbound accepted/failed listeners may implement `ShouldQueue`; use
+after-commit listener handling when their rows are part of a transaction.
+Immediate listener isolation is best effort, and queued work follows the
+host's retry/error policy. See [events](events.md) for serialization,
+retention and publication limits.
 
-        $notifiable = $this->notifiableType !== null && $this->notifiableId !== null
-            ? app($this->notifiableType)->newQuery()->find($this->notifiableId)
-            : null;
-
-        $real->send($this->recipient, $this->message, $notifiable);
-
-        // Delete the placeholder row — the inner gateway created its own
-        // authoritative row. (Or merge them — implementation choice.)
-        SmsDispatch::query()->where('ulid', $this->pendingDispatchUlid)->delete();
-    }
-}
-```
-
-Bind in `AppServiceProvider`:
-
-```php
-$this->app->bind(SmsSender::class, function ($app) {
-    return new \App\Sms\QueuedSmsSender(
-        inner: $app->make(\MetaSoftDevs\TextSmsLaravelNotificationSdk\Gateways\TextSmsGateway::class),
-    );
-});
-```
-
-## Recommendation
-
-For most applications, **Pattern A is enough.** Queue the notification,
-let it run inside the worker, done. Pattern B adds complexity (two rows
-per dispatch, queue retry semantics, etc.) and is only worth it when you
-need per-send job-level retry policies that differ from the notification's
-own retry policy.
-
-## What this package does NOT do
-
-The package does not bundle either pattern. The `ShouldQueue` decision is
-yours (it depends on whether your notification has other heavy channels);
-the queued-sender decorator is application-specific (the job's retry
-strategy depends on your queue infrastructure).
+Delivery callbacks only replace the latest sanitized `dlr_payload` and
+preserve state and timestamps. They emit no SDK or Eloquent events and
+invoke no application actions. Queueing a notification does not enable
+delivery reconciliation, polling or a delivery listener.

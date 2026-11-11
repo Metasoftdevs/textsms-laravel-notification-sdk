@@ -3,21 +3,27 @@
 Tracked work-in-progress and future enhancements. Items are grouped by
 target release; nothing here is committed timeline-wise.
 
-## v1.0 — shipped
+## v1.0 — implemented locally, release checks pending
 
 - Provider-agnostic `SmsSender` + `SmsDeliveryReportProcessor` contracts.
 - `TextSmsGateway` default concrete implementation.
 - `KenyanE164Normalizer` + `ChainedNormalizer`.
-- Three events: `SmsDispatchAccepted`, `SmsDispatchFailed`, `SmsDeliveryReported`.
+- Two outbound events: `SmsDispatchAccepted`, `SmsDispatchFailed`.
+- Informational delivery reports only; legacy `SmsDeliveryReported` remains
+  loadable but is not emitted. No delivery precedence or application actions.
+- One bounded send retry for proven cURL 6/7 connection failures.
+- Authenticated configurable callback limiter, default 600/minute.
 - `SmsChannel` Laravel notification channel registered as `'sms'`.
 - DLR webhook controller + `VerifyTextSmsCallback` middleware.
-- `sms_dispatches` table migration (publishable stub).
+- `sms_dispatches` table migration (native publish-once PHP migration).
 - Three artisan commands: `textsms:balance`, `textsms:test`, `textsms:dispatch:show`.
 - `Testing\FakeSmsGateway` with `assertSentTo()`, `assertNothingSent()`, `assertSentCount()`.
 - `LogOnlySmsGateway` for local development.
-- Pest + Orchestra Testbench suite (52 tests, 131 assertions).
+- Pest + Orchestra Testbench regression suite.
 - PHPStan level 8 clean.
-- CI on PHP 8.2 + 8.3 × Laravel 12.*.
+- Prepared twelve-row CI for Laravel 12 on PHP 8.2/8.3/8.4 and Laravel 13
+  on PHP 8.3/8.4/8.5, each at lowest/stable dependencies. Two local Laravel13
+  graphs pass; the complete matrix on the release commit remains pending.
 
 ## v1.1 — multi-sender ID pools
 
@@ -42,16 +48,16 @@ override; per-message override remains the supported v1.0 path.
 
 ## v1.x — multi-provider failover
 
-A `FailoverSmsSender` that wraps an ordered list of providers and falls
-through on `SmsProviderException`. The interface already accommodates
-this — see [`docs/extending-providers.md`](extending-providers.md) for
-the documented extension recipe. Promotion to a shipped class requires
-deciding the retry-policy interface.
+An application-owned fallback policy could select another provider only
+when the previous attempt is proven safe to repeat. `SmsProviderException`
+alone is insufficient: accepted-but-unrecorded and unknown outcomes must
+not fall through automatically. See [provider extensions](extending-providers.md).
+No automatic failover class or general retry-policy interface is shipped.
 
 ## v1.x — HMAC-signed webhooks
 
-TextSMS does not sign its payloads. Future providers (Twilio,
-Africa's Talking) do sign with HMAC. The roadmap includes shipping a
+This SDK does not verify callback signatures. Provider/account signing
+capabilities need confirmation before designing an HMAC extension. The roadmap includes shipping a
 sibling `HmacSignedMiddleware` alongside the current
 `VerifyTextSmsCallback` when at least one HMAC-signing provider lands.
 
@@ -65,8 +71,8 @@ Targeted for when at least one consumer requests it.
 ## v1.x — queued sender decorator
 
 Bundling [`docs/queueing.md`](queueing.md)'s "Pattern B" recipe as a
-shipped class. Deferred until the retry-policy interface (above) lands —
-queued retries are where retry semantics matter most.
+shipped class. Deferred until application demand and safe queued retry
+behavior are demonstrated; no additional policy framework is required now.
 
 ## v2.0 — possible refactors
 

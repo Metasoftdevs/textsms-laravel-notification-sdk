@@ -1,0 +1,396 @@
+# Packagist Publication Checklist
+
+**Package:** `metasoftdevs/textsms-laravel-notification-sdk`\
+**Prepared:** 2026-06-09\
+**Updated:** 2026-11-11, Africa/Nairobi\
+**Target sequence:** `v1.0.0-rc1` then `v1.0.0`
+
+This checklist is intentionally release-gated. Do not submit or tag a stable
+release while any blocker remains open.
+
+This is a verification plan, not a record of completed checks or permission
+to contact the provider, expose credentials, change repository visibility,
+create/push tags or publish a release. Record dated evidence against the
+exact candidate tree. Interpret historical reviews through the approved
+[passive callback scope](../implementation/2026-11-09-approved-minimal-resolutions.md)
+and current accepted task records.
+
+November11 local evidence and remaining gates are recorded in
+[current execution status](../implementation/2026-11-11-execution-status.md).
+The boxes below remain release checks on the exact commit/tag; candidate
+source, isolated-graph and controlled-archive passes are not a published release.
+
+## 1. Resolve Review Blockers
+
+- [ ] Resolve applicable Critical/High findings from the reviews using the
+  [consolidated task index](claude/2026-11-01-consolidated-analysis-and-implementation-priorities.md)
+  and its scope amendments. Superseded delivery-state/poller proposals are
+  not active release requirements.
+- [ ] Add permanent Pest regression tests for every corrected defect.
+- [ ] Verify passive callbacks: sanitized latest `dlr_payload` only; unchanged
+  state, identifiers and timestamps; no observers, SDK events or application
+  actions; storage errors propagate. No poller or reconciliation engine is required.
+- [ ] Distinguish the SDK's POST input contract from provider-confirmed push
+  support. Obtain sanitized method/schema/registration/retry evidence before
+  claiming a live callback integration; retain limitations without that evidence.
+- [ ] Verify the approved retry boundary: at most two Laravel send attempts,
+  structured cURL 6/7 only, redirects disabled and unknown outcomes unsafe to
+  resend. Do not require a new retry-policy abstraction.
+- [ ] Finish remaining credential preflight and balance-response/error checks.
+- [ ] Replace manual migration publishing with Laravel
+  `publishesMigrations()`.
+- [ ] Verify creation-migration publication once, application date settings
+  and a safe forward migration for any changed existing installation.
+- [ ] Verify morph-map/key handling and contract-faithful test doubles.
+- [ ] Exclude callback tokens from rows, events and application logs. Plan
+  affected-deployment secret rotation and historical retention separately.
+
+## 2. Confirm Repository Publication Preconditions
+
+- [ ] Make the GitHub repository publicly accessible.
+- [ ] Confirm this URL works while signed out:
+  <https://github.com/Metasoftdevs/textsms-laravel-notification-sdk>
+- [ ] Confirm the default branch is `main`.
+- [ ] Confirm the repository is not archived.
+- [ ] Confirm GitHub Actions is enabled.
+- [ ] Configure branch protection for `main`:
+  - [ ] Require pull requests.
+  - [ ] Require the tests workflow.
+  - [ ] Require PHPStan.
+  - [ ] Require Pint.
+  - [ ] Prevent force pushes.
+- [ ] Confirm the release operator has permission to create tags and GitHub
+  releases.
+
+Packagist public submission requires a public repository URL:
+<https://packagist.org/about#how-to-submit-packages>
+
+## 3. Validate Package Identity and Metadata
+
+- [ ] Confirm the package name is final:
+  `metasoftdevs/textsms-laravel-notification-sdk`.
+- [ ] Confirm the package name is still available on Packagist.
+- [ ] Confirm the publishing Packagist account is a maintainer of the
+  protected `metasoftdevs` vendor namespace.
+- [ ] Confirm `composer.json` contains the correct:
+  - [ ] `name`
+  - [ ] `description`
+  - [ ] `type`
+  - [ ] `license`
+  - [ ] `homepage`
+  - [ ] `support`
+  - [ ] `authors`
+  - [ ] production requirements
+  - [ ] Laravel package discovery provider
+- [ ] Do not add a hard-coded `version` field to `composer.json`; Composer
+  and Packagist derive versions from VCS tags.
+- [ ] Confirm LICENSE ownership and year are correct.
+
+References:
+
+- <https://packagist.org/about#naming-your-package>
+- <https://getcomposer.org/doc/02-libraries.md#library-versioning>
+
+## 4. Harden the Release Toolchain
+
+- [ ] Record the installed Composer version and diagnose the release
+  environment. Update the toolchain through an authorized operation when needed;
+  do not treat the June version observation as a current check.
+- [ ] Run:
+
+```bash
+composer --version
+composer diagnose
+composer validate --strict
+composer outdated --direct --strict
+composer check-platform-reqs --no-dev
+```
+
+- [ ] Require clean results or document any accepted exception.
+- [ ] Audit the installed/generated dependency graph after install/update.
+  `composer audit --locked` targets the local lock generated by Composer;
+  `composer audit` targets installed packages. State which graph was checked.
+- [ ] Ensure no credentials exist in:
+  - [ ] Git history
+  - [ ] README and docs
+  - [ ] examples
+  - [ ] tests and fixtures
+  - [ ] provider Postman resources
+  - [ ] GitHub Actions logs
+
+Composer recommends running `validate` before tagging:
+<https://getcomposer.org/doc/03-cli.md#validate>
+
+## 5. Complete Automated Quality Gates
+
+- [ ] Run the latest-supported dependency suite in a clean checkout:
+
+```bash
+composer update --prefer-stable
+composer test
+composer phpstan
+composer pint-test
+composer audit --locked
+```
+
+- [ ] Run the lowest-supported dependency suite in a clean checkout:
+
+```bash
+composer update --prefer-lowest --prefer-stable
+composer test
+```
+
+- [ ] Resolve and test the intended Laravel/Testbench/testing-package major
+  for every supported PHP/framework row, at both lowest and stable dependencies.
+  A single installed graph does not establish the declared range.
+- [ ] For Laravel 12 and Laravel 13 support, verify both actual dependency
+  graphs and fresh applications with their supported PHP versions. Confirm
+  Pest/plugin/PHPUnit/Testbench compatibility before widening constraints.
+  Do not infer Laravel 13 support from a prepared matrix or version arithmetic.
+- [ ] Align published Composer/README support claims with the successful
+  matrix. Record unresolved or unavailable rows as release limitations.
+
+- [ ] Confirm GitHub Actions executes lowest/stable rows, manifest validation
+  and the selected dependency audit; configuration alone is not execution evidence.
+- [ ] Confirm all GitHub Actions jobs pass on the exact release commit.
+- [ ] Confirm no uncommitted files remain:
+
+```bash
+git status --short
+```
+
+Expected release gate:
+
+- [ ] Pest passes.
+- [ ] PHPStan level 8 passes.
+- [ ] Pint passes.
+- [ ] Composer validation passes.
+- [ ] Dependency audit passes.
+
+## 6. Verify the Composer Distribution
+
+- [ ] After verifying the release toolchain in section 4, create and inspect
+  the package archive:
+
+```bash
+composer archive --format=zip
+```
+
+- [ ] Confirm the archive includes:
+  - [ ] `composer.json`
+  - [ ] `LICENSE`
+  - [ ] `README.md`
+  - [ ] `src/`
+  - [ ] `config/textsms.php`
+  - [ ] `database/migrations/`
+  - [ ] `routes/webhooks.php`
+- [ ] Confirm the archive excludes:
+  - [ ] `.git/`
+  - [ ] `.github/`
+  - [ ] `vendor/`
+  - [ ] tests
+  - [ ] `.docs/`, `.agents/` and `.claude/`
+  - [ ] credentials and environment files
+- [ ] Confirm `pint.json` is excluded and stale attribute rules are removed.
+- [ ] Inspect the intended tracked release tree. An archive of old HEAD
+  cannot establish exclusion of newly committed files. Directory attribute
+  checks do not require child paths to report `export-ignore: set`.
+
+## 7. Smoke Install in Every Claimed Laravel Major
+
+- [ ] Create a fresh Laravel 12 application, and a Laravel 13 application
+  if that major is claimed, on compatible PHP versions. Record each result.
+- [ ] Require the package from a local path or release-candidate tag.
+- [ ] Confirm package auto-discovery.
+- [ ] Publish config once.
+- [ ] Publish the creation migration once and inspect its name/date against
+  `database.migrations.update_date_on_publish`. Do not assert repeat-safe
+  publication or re-run a creation migration against an existing table.
+- [ ] Run migrations.
+- [ ] Confirm the `sms_dispatches` table schema.
+- [ ] Confirm these commands are registered:
+
+```bash
+php artisan textsms:balance --help
+php artisan textsms:test --help
+php artisan textsms:dispatch:show --help
+```
+
+- [ ] Confirm the webhook route is present when enabled:
+
+```bash
+php artisan route:list --path=textsms
+```
+
+- [ ] Confirm the route is absent when `TEXTSMS_WEBHOOK_ENABLED=false`.
+- [ ] Publish and manually include the custom routes file; confirm there is
+  no duplicate route.
+- [ ] Run:
+
+```bash
+php artisan config:cache
+php artisan route:cache
+php artisan optimize
+php artisan optimize:clear
+```
+
+- [ ] Confirm package configuration and routes still behave correctly after
+  caching.
+- [ ] Verify default and configured callback allowances, shared across source
+  IPs; authentication must run before the named limiter. Upgrade old published
+  configs/routes so an unintended `throttle:60,1` does not remain in force.
+- [ ] Test with an integer-key notifiable model.
+- [ ] Test and document behavior with UUID/ULID notifiable models.
+- [ ] Verify aliases under an enforced morph map and restore global morph
+  settings between tests. Test the key type configured for the published schema.
+- [ ] For every database engine claimed as supported, verify fresh creation,
+  forward upgrade with existing data, JSON payload round trips, passive
+  timestamp preservation and bounded provider-description writes. Include
+  MySQL strict mode and PostgreSQL if advertised. SQLite-only tests do not
+  establish those engine guarantees; limit claims to verified evidence.
+
+## 8. Provider Smoke Test
+
+Owner amendment, November11: run this section in a live test Laravel application
+after pushing and publishing the package. It remains pending evidence and is
+not a pre-publication gate. Do not describe the provider contract as verified.
+
+Use an authorized test recipient and sandbox or controlled production
+credentials.
+
+- [ ] Confirm API key, partner ID, and sender ID are active.
+- [ ] Run one authorized SMS send:
+
+```bash
+php artisan textsms:test 07XXXXXXXX
+```
+
+- [ ] Confirm one `sms_dispatches` row is created.
+- [ ] Confirm `status=sent`, `provider_message_id`, and `sent_at`.
+- [ ] Record observed provider IDs/reference echoes, acceptance and receipt
+  evidence. One successful send does not prove provider idempotency or an
+  absolute on-wire retry cap. Do not deliberately duplicate a send without
+  separate test authorization.
+- [ ] Confirm callback support for the account before registering the SDK
+  endpoint. Capture sanitized method/content type/schema and retry observations.
+  If unconfirmed, retain the explicit provider-contract limitation in release notes.
+- [ ] For delivered/failed/interim/reordered callback payloads, verify only
+  the latest sanitized `dlr_payload` changes. Preserve status, all timestamps
+  and identifiers; emit no SDK/model events and invoke no application actions.
+- [ ] Verify unmatched acknowledgement, invalid-shape rejection, configured
+  limiter/authentication ordering and non-success when storage fails.
+- [ ] Do not add a poller, event-history table or delivery reconciliation
+  requirement to this passive callback smoke test.
+- [ ] Confirm sensitive callback tokens do not appear in application logs.
+- [ ] Record sanitized evidence in release notes.
+
+## 9. Prepare the Release Candidate
+
+- [ ] Update `CHANGELOG.md`:
+  - [ ] Move relevant items from `[Unreleased]`.
+  - [ ] Add `[1.0.0-rc1] - YYYY-MM-DD`.
+  - [ ] Add compare links.
+- [ ] Confirm README installation steps match the release candidate.
+- [ ] Confirm documentation clearly describes DLR support level.
+- [ ] Commit the release-candidate preparation.
+- [ ] Confirm CI passes on the exact commit.
+- [ ] Create and push an annotated release-candidate tag:
+
+```bash
+git tag -a v1.0.0-rc1 -m "Release v1.0.0-rc1"
+git push origin v1.0.0-rc1
+```
+
+- [ ] Create a GitHub prerelease from `v1.0.0-rc1`.
+- [ ] Install the tag in a clean Laravel application:
+
+```bash
+composer require metasoftdevs/textsms-laravel-notification-sdk:^1.0@RC
+```
+
+- [ ] Complete all smoke tests against the tagged artifact.
+
+Composer derives package versions from VCS tags:
+<https://getcomposer.org/doc/articles/versions.md>
+
+## 10. Submit to Packagist
+
+- [ ] Sign into Packagist using the authorized MetaSoftDevs maintainer
+  account.
+- [ ] Open <https://packagist.org/packages/submit>.
+- [ ] Submit:
+
+```text
+https://github.com/Metasoftdevs/textsms-laravel-notification-sdk
+```
+
+- [ ] Confirm Packagist detects:
+  - [ ] Correct package name.
+  - [ ] Correct repository.
+  - [ ] `dev-main`.
+  - [ ] `v1.0.0-rc1`.
+  - [ ] Correct requirements and license.
+  - [ ] README rendering.
+- [ ] Confirm the package page reports no metadata or security errors.
+- [ ] Install from Packagist in a clean Laravel application.
+
+## 11. Configure Automatic Packagist Updates
+
+Preferred path:
+
+- [ ] Log into Packagist using GitHub.
+- [ ] Grant the Packagist GitHub application access to the MetaSoftDevs
+  organization.
+- [ ] Confirm the package shows automatic updates enabled.
+
+Manual webhook fallback:
+
+- [ ] Add a GitHub repository webhook.
+- [ ] Payload URL:
+
+```text
+https://packagist.org/api/github?username=PACKAGIST_USERNAME
+```
+
+- [ ] Content type: `application/json`.
+- [ ] Secret: Packagist API token.
+- [ ] Event: push.
+- [ ] Confirm a test delivery succeeds.
+
+Reference:
+<https://packagist.org/about#how-to-update-packages>
+
+## 12. Promote to Stable `v1.0.0`
+
+- [ ] Collect release-candidate feedback.
+- [ ] Resolve every RC defect.
+- [ ] Repeat all quality, archive, fresh-install, and provider smoke tests.
+- [ ] Update `CHANGELOG.md` with `[1.0.0] - YYYY-MM-DD`.
+- [ ] Confirm CI passes on the exact stable release commit.
+- [ ] Create and push the stable annotated tag:
+
+```bash
+git tag -a v1.0.0 -m "Release v1.0.0"
+git push origin v1.0.0
+```
+
+- [ ] Create the GitHub stable release.
+- [ ] Confirm Packagist imports `v1.0.0`.
+- [ ] Confirm stable installation:
+
+```bash
+composer require metasoftdevs/textsms-laravel-notification-sdk:^1.0
+```
+
+- [ ] Run the fresh Laravel smoke test from Packagist one final time.
+
+## 13. Post-Publication Operations
+
+- [ ] Monitor Packagist metadata and install failures.
+- [ ] Monitor GitHub issues and security reports.
+- [ ] Enable Dependabot or Renovate for Composer and GitHub Actions.
+- [ ] Define a supported-version and security-fix policy.
+- [ ] Protect Packagist and GitHub maintainer accounts with 2FA.
+- [ ] Store Packagist tokens only in approved secret stores.
+- [ ] Rotate any token exposed during release setup.
+- [ ] Start the next `[Unreleased]` changelog section.

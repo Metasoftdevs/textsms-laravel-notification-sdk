@@ -1,121 +1,122 @@
-# DLR webhooks
+# Delivery-report webhooks
 
-The SDK exposes a single inbound HTTP surface: a delivery-report endpoint
-the provider posts to whenever a previously dispatched SMS changes
-delivery state.
+The SDK accepts POST callbacks and stores the sanitized latest payload in
+the matched dispatch's `dlr_payload`. Reports are informational only:
+submission state, identifiers, counters and timestamps (including
+`updated_at`) stay unchanged. No SDK event, Eloquent observer or application
+action runs, including retrieval hooks. No delivery outcome is classified.
 
-## Default endpoint
+Repeated or reordered reports replace that one payload; this is neither
+delivery history nor an authoritative delivery outcome. Every explicit
+send already creates a separate dispatch row. Callbacks do not resend.
 
-```
-POST {textsms.webhook.url_prefix}/textsms/dlr
-```
+## Endpoint and secret callback URL
 
-With the default `'api/v1/sms'` prefix, that's
-`https://yourapp.com/api/v1/sms/textsms/dlr`.
-
-## Configuring on the TextSMS portal
-
-Set the "Callback URL" on the portal to:
-
-```
-https://yourapp.com/api/v1/sms/textsms/dlr?token=YOUR_TEXTSMS_DLR_SECRET
+```text
+POST https://yourapp.com/api/v1/sms/textsms/dlr?token=YOUR_SECRET
 ```
 
-Generate `YOUR_TEXTSMS_DLR_SECRET` once with:
+Use the existing environment-configured secret:
 
-```bash
-php -r "echo bin2hex(random_bytes(32));"
+```env
+TEXTSMS_DLR_SECRET=your-long-random-secret
+TEXTSMS_WEBHOOK_RATE_LIMIT=600
+TEXTSMS_WEBHOOK_PREFIX=api/v1/sms
 ```
 
-Put it in `.env` as `TEXTSMS_DLR_SECRET=...` and use the same value as
-the `?token=...` query parameter on the portal callback URL.
+Generate it with `php -r "echo bin2hex(random_bytes(32));"`. Use the same
+value in `.env` and the registered URL's `token` parameter. No second URL key
+is needed. The SDK also accepts `X-TextSMS-Token`; when present that header
+takes precedence over the query token. Prefer the header if the provider
+supports it, to avoid secrets in access-log URLs.
 
-## Auth model
+`VerifyTextSmsCallback` uses constant-time comparison. Missing, wrong or
+non-string tokens receive 401; an unconfigured secret receives 500. Denial
+logs include query keys and the URL without its query string, never the
+presented token. Host proxies/access logs need their own redaction.
 
-The `VerifyTextSmsCallback` middleware sits in front of the endpoint and
-performs:
+## One authenticated rate limit
 
-1. Reads `config('textsms.providers.textsms.dlr_secret')`.
-2. Returns **500** if the secret is unconfigured (forces explicit ops
-   setup — fail loud, not silent).
-3. Reads the supplied token from the `?token=...` query OR the
-   `X-TextSMS-Token` header. The header form is preferred for ops who
-   can configure custom callback headers.
-4. Compares using `hash_equals()` for constant-time comparison.
-5. Returns **401** on mismatch, with a PSR-3 warning log entry.
+The package route applies Laravel's named `textsms-dlr` limiter after
+authentication. The default is **600 authenticated callbacks per minute**,
+shared across source IPs for this application's TextSMS integration.
+`TEXTSMS_WEBHOOK_RATE_LIMIT` accepts a positive integer; values below 1 use 1.
+Excess requests receive Laravel's 429 response with `Retry-After`.
+Invalid tokens neither consume this allowance nor receive 429 when it is
+exhausted. Authenticated malformed and unmatched callbacks consume it.
 
-## Response contract
+The limiter uses Laravel's configured rate-limiter cache. Share that cache
+across application servers if the allowance must apply across them. It does
+not replace perimeter controls for unauthenticated traffic.
+
+`textsms.webhook.middleware` defaults to `[]` for optional additional host
+middleware. Authentication and the named limiter are on the package route.
+**Upgrade published configs:** remove the old `throttle:60,1` if you intend
+to use only the new named limit; otherwise it remains an additional
+restriction. Update previously published route copies to use
+`throttle:textsms-dlr` as well as `verify.textsms.callback`.
+
+## Payload and response contract
+
+The controller strips the top-level `token` from query/body input.
+`messageid` (or `messageID`) must be an integer or non-blank string;
+`0` and `"0"` are valid. `status` (or `dlrstatus`) may be absent or a
+string/number. Arrays, objects and booleans are invalid status values.
+These are SDK input rules; no callback outcome is inferred.
 
 | Scenario | Response |
 |---|---|
-| Valid token, payload contains `messageid`, row matches | `200` with `{status: 200, message: 'OK'}`. Dispatch row updated, `SmsDeliveryReported` event fired. |
-| Valid token, payload contains `messageid`, row **does not** match | `200` (so the provider stops retrying). `null` returned from the processor; a PSR-3 info log entry records the orphan. |
-| Valid token, `messageid` missing or empty | `422` with `{status: 422, message: 'Missing messageid in payload'}` |
-| Missing token | `401` with `{status: 401, message: 'Unauthorized'}` |
-| Wrong token | `401` |
-| Secret unconfigured | `500` with `{status: 500, message: 'Server misconfiguration'}` |
+| Authenticated, within limit, valid payload, matched ID | 200 with `{status: 200, message: 'OK'}` after recording the payload |
+| Valid payload, unmatched ID | 200; metadata-only info log records the miss |
+| Missing/null/blank message ID | 422, `Missing messageid in payload` |
+| Invalid message ID type | 422, `Invalid messageid in payload` |
+| Invalid status type | 422, `Invalid status in payload` |
+| Missing/wrong/malformed token | 401, `Unauthorized` |
+| Secret unconfigured | 500, `Server misconfiguration` |
+| Authenticated allowance exhausted | Laravel 429 with `Retry-After` |
+| Recording fails | Exception follows the host handler, normally 500; no success acknowledgement |
 
-## Customising the URL prefix
+Shape rejections produce one warning listing field names only. The default
+recorder suppresses model events so application observers cannot act on,
+veto or interrupt the informational write. Storage/encoding failures
+propagate. No delivery listener is invoked.
 
-By default the webhook lives at `/api/v1/sms/textsms/dlr`. To host it
-elsewhere, set `TEXTSMS_WEBHOOK_PREFIX` in `.env`:
+A callback arriving before its provider ID is saved may be acknowledged as
+unmatched. No repair/polling job is shipped or required for passive storage.
+Direct callers of `recordDeliveryReport()` must sanitize and validate input
+themselves; the HTTP boundary supplies that guarantee.
 
-```env
-TEXTSMS_WEBHOOK_PREFIX=webhooks/sms
-```
+## Provider evidence
 
-Then the endpoint becomes `/webhooks/sms/textsms/dlr` and you configure
-the TextSMS portal accordingly.
+Extraction history reports push callbacks in QPIMS, but this checkout has
+no sanitized live fixtures confirming TextSMS's current callback method,
+payload, registration, header support, signing or retry behavior. Confirm
+these for the account before registering the endpoint. The bundled PDF's
+`/api/services/getdlr/` describes lookup, not proof of push support.
+No polling command or HMAC verification is shipped.
 
-## Adding extra middleware
+An account owner can authorize a billable test and capture sanitized
+method/content-type/field/status/response evidence. Exclude credentials,
+recipients and message content from shared fixtures. Synthetic tests
+prove SDK behavior, not the live provider contract.
 
-`config('textsms.webhook.middleware')` is an array of middleware aliases
-that wraps the route group. The default is `['throttle:60,1']`. To add
-e.g. Cloudflare IP filtering:
+## Custom route registration
 
-```php
-// config/textsms.php
-'webhook' => [
-    'enabled'    => true,
-    'url_prefix' => 'api/v1/sms',
-    'middleware' => ['throttle:60,1', 'cloudflare.ip_filter'],
-],
-```
-
-## Disabling the auto-registered route
-
-If you'd rather register the route yourself (for a custom URL shape, a
-different middleware stack, or to attach it to a non-default route file),
-disable auto-loading and publish the routes file:
-
-```env
-TEXTSMS_WEBHOOK_ENABLED=false
-```
+Change `TEXTSMS_WEBHOOK_PREFIX` to move the endpoint, or set
+`TEXTSMS_WEBHOOK_ENABLED=false` and publish/include a customized routes file:
 
 ```bash
 php artisan vendor:publish --tag=textsms-routes
 ```
 
-The published file lands at `routes/textsms-webhooks.php`. Include it
-from wherever makes sense in your application.
+It lands at `routes/textsms-webhooks.php`. Keep authentication before the
+named limiter when adapting the route.
 
-## HMAC-signed webhooks (future)
+## Older secret-bearing installations
 
-TextSMS does not sign its payloads, so the token-bearer pattern is the
-strongest available defence today. Future providers (Twilio, Africa's
-Talking) do sign payloads with HMAC; the SDK roadmap includes shipping
-an `HmacSignedMiddleware` alongside the current `VerifyTextSmsCallback`
-when those providers are added.
-
-## Verifying the webhook locally
-
-Use `ngrok` or `localtunnel` to expose `php artisan serve` to TextSMS:
-
-```bash
-php artisan serve
-ngrok http 8000
-```
-
-Set the portal callback URL to the ngrok-issued HTTPS URL plus
-`/api/v1/sms/textsms/dlr?token=...` and send a test SMS via
-`php artisan textsms:test`. Watch your log for the incoming DLR POST.
+Earlier versions retained the query token in report payloads and denied
+request logs. Rotate `TEXTSMS_DLR_SECRET` wherever callbacks were received
+and update registration. Decide whether to scrub old `dlr_payload.token`
+values and log retention, including reverse-proxy/access logs. See
+[operations](operations.md). Code deployment does not rotate secrets or
+delete existing data.
