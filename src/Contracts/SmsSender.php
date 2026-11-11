@@ -51,7 +51,7 @@ interface SmsSender
      *                     the method also throws {@see SmsProviderException}).
      *
      * @throws SmsDispatchException Bad input: invalid phone, empty body.
-     * @throws SmsProviderException Provider rejected or unreachable.
+     * @throws SmsProviderException Provider refusal, unknown outcome, or local preparation/recording failure; inspect the message before retrying.
      */
     public function send(string $recipient, SmsMessage $message, ?Model $notifiable = null): SmsDispatch;
 
@@ -62,7 +62,7 @@ interface SmsSender
      * @return Collection<int, SmsDispatch> Rows in input order.
      *
      * @throws SmsDispatchException When `count($items)` exceeds the provider limit or items are malformed.
-     * @throws SmsProviderException Provider rejected the whole batch.
+     * @throws SmsProviderException Whole-response failure, unknown outcome, or local preparation/recording failure. Per-item failures return rows; failed does not imply safe resend.
      */
     public function sendBulk(array $items): Collection;
 

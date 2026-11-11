@@ -4,11 +4,16 @@ declare(strict_types=1);
 
 namespace MetaSoftDevs\TextSmsLaravelNotificationSdk;
 
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Contracts\Foundation\Application;
-use Illuminate\Contracts\Http\Kernel as HttpKernel;
+use Illuminate\Contracts\Http\Kernel as HttpKernelContract;
+use Illuminate\Foundation\Http\Kernel;
 use Illuminate\Notifications\ChannelManager;
+use Illuminate\Routing\Middleware\ThrottleRequests;
+use Illuminate\Routing\Middleware\ThrottleRequestsWithRedis;
 use Illuminate\Routing\Router;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use MetaSoftDevs\TextSmsLaravelNotificationSdk\Console\Commands\BalanceCommand;
 use MetaSoftDevs\TextSmsLaravelNotificationSdk\Console\Commands\ShowDispatchCommand;
@@ -33,7 +38,7 @@ use Psr\Log\LoggerInterface;
  *                  registered yet).
  *
  *  - `boot()`:     register the `'sms'` notification channel alias,
- *                  the `verify.textsms.callback` middleware alias, the
+ *                  the callback authentication alias and named limiter, the
  *                  artisan commands (CLI runs only), the publishable
  *                  config / migration / routes, and load
  *                  `routes/webhooks.php` when the webhook is enabled.
@@ -43,6 +48,7 @@ use Psr\Log\LoggerInterface;
  */
 class TextSmsNotificationServiceProvider extends ServiceProvider
 {
+    /** Merge package defaults and register sender/processor/normalizer bindings. */
     public function register(): void
     {
         $this->mergeConfigFrom(__DIR__.'/../config/textsms.php', 'textsms');
@@ -77,10 +83,12 @@ class TextSmsNotificationServiceProvider extends ServiceProvider
         });
     }
 
+    /** Register framework integration, conditional webhook routes and console tooling. */
     public function boot(): void
     {
         $this->registerChannel();
         $this->registerMiddlewareAlias();
+        $this->registerCallbackLimiter();
         $this->registerPublishables();
 
         if ((bool) config('textsms.webhook.enabled', true)) {
@@ -130,14 +138,13 @@ class TextSmsNotificationServiceProvider extends ServiceProvider
      */
     private function registerChannel(): void
     {
-        /** @var ChannelManager $manager */
-        $manager = $this->app->make(ChannelManager::class);
-
-        $manager->extend('sms', function (Application $app): SmsChannel {
-            return new SmsChannel(
-                sender: $app->make(SmsSender::class),
-                logger: $app->make(LoggerInterface::class),
-            );
+        $this->callAfterResolving(ChannelManager::class, function (ChannelManager $manager): void {
+            $manager->extend('sms', function (Application $app): SmsChannel {
+                return new SmsChannel(
+                    sender: $app->make(SmsSender::class),
+                    logger: $app->make(LoggerInterface::class),
+                );
+            });
         });
     }
 
@@ -153,12 +160,24 @@ class TextSmsNotificationServiceProvider extends ServiceProvider
 
         $router->aliasMiddleware('verify.textsms.callback', VerifyTextSmsCallback::class);
 
-        // Also surface through the HTTP kernel for consumers using the
-        // newer `bootstrap/app.php` alias block (Laravel 11+/12).
-        if ($this->app->bound(HttpKernel::class)) {
-            // No-op for now: Laravel auto-resolves route middleware aliases
-            // registered through Router. Kept here as an extension point.
-        }
+    }
+
+    /** Authenticate before consuming the shared, configurable callback allowance. */
+    private function registerCallbackLimiter(): void
+    {
+        RateLimiter::for('textsms-dlr', static function (): Limit {
+            return Limit::perMinute(max(1, (int) config('textsms.webhook.rate_limit_per_minute', 600)))
+                ->by('textsms');
+        });
+
+        $this->callAfterResolving(HttpKernelContract::class, static function (HttpKernelContract $kernel): void {
+            if ($kernel instanceof Kernel) {
+                $kernel->addToMiddlewarePriorityBefore(
+                    [ThrottleRequests::class, ThrottleRequestsWithRedis::class],
+                    VerifyTextSmsCallback::class,
+                );
+            }
+        });
     }
 
     /**
@@ -175,8 +194,8 @@ class TextSmsNotificationServiceProvider extends ServiceProvider
             __DIR__.'/../config/textsms.php' => $this->app->configPath('textsms.php'),
         ], 'textsms-config');
 
-        $this->publishes([
-            __DIR__.'/../database/migrations/2026_06_08_000000_create_sms_dispatches_table.php.stub' => $this->app->databasePath('migrations/'.date('Y_m_d_His').'_create_sms_dispatches_table.php'),
+        $this->publishesMigrations([
+            __DIR__.'/../database/migrations' => $this->app->databasePath('migrations'),
         ], 'textsms-migrations');
 
         $this->publishes([

@@ -45,6 +45,7 @@ final class ChainedNormalizer implements PhoneNumberNormalizer
         private readonly array $normalizers,
     ) {}
 
+    /** Return the first non-null normalization result, in configured order. */
     public function normalize(?string $raw): ?string
     {
         foreach ($this->normalizers as $normalizer) {
@@ -58,6 +59,7 @@ final class ChainedNormalizer implements PhoneNumberNormalizer
         return null;
     }
 
+    /** Accept a normalized candidate if any configured normalizer accepts it. */
     public function isValid(?string $candidate): bool
     {
         foreach ($this->normalizers as $normalizer) {

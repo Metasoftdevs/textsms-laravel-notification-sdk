@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace MetaSoftDevs\TextSmsLaravelNotificationSdk\Tests;
 
-use Illuminate\Database\Migrations\Migration;
 use Illuminate\Foundation\Application;
 use MetaSoftDevs\TextSmsLaravelNotificationSdk\TextSmsNotificationServiceProvider;
 use Orchestra\Testbench\TestCase as Orchestra;
@@ -14,14 +13,12 @@ use Orchestra\Testbench\TestCase as Orchestra;
  *
  * Boots a minimal Laravel application via Orchestra Testbench, registers
  * the package's service provider, points the in-memory SQLite database
- * at the `sms_dispatches` table, and runs the migration stub through the
+ * at the `sms_dispatches` table, and loads package migrations through the
  * supported `defineDatabaseMigrations()` hook so it co-operates with the
  * `RefreshDatabase` trait used in Feature tests.
  *
- * The package ships its migration as a `.stub` (so the `vendor:publish`
- * tag can rewrite the timestamp on copy). Since Orchestra's
- * `loadMigrationsFrom()` only discovers `.php` extensions, we manually
- * `require` the stub here and call `up()` on the returned migration.
+ * The suite loads the same discoverable PHP migration used by fresh package
+ * installations. Native migration publishing respects host configuration.
  */
 abstract class TestCase extends Orchestra
 {
@@ -66,14 +63,10 @@ abstract class TestCase extends Orchestra
 
     /**
      * Orchestra hook called during application bootstrapping to define the
-     * package-side migrations. The stub returns an anonymous Migration
-     * class which we instantiate and call `up()` on directly.
+     * discoverable package-side migrations.
      */
     protected function defineDatabaseMigrations(): void
     {
-        /** @var Migration $migration */
-        $migration = require __DIR__.'/../database/migrations/2026_06_08_000000_create_sms_dispatches_table.php.stub';
-
-        $migration->up();
+        $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
     }
 }

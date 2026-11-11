@@ -5,9 +5,7 @@ parameters:
     level: 8
     paths:
         - src
-    excludePaths:
-        - src/Console/Commands/*.stub
     ignoreErrors:
-        # Laravel facade calls return mixed by design; downstream casts are explicit.
+        # Existing Eloquent model/builder/relation types omit some generic parameters.
         - identifier: missingType.generics
     treatPhpDocTypesAsCertain: false

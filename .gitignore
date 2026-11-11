@@ -1,6 +1,7 @@
 /vendor
 /.idea
 /.vscode
+/.claude/
 /build
 /coverage
 .phpunit.result.cache

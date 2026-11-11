@@ -5,11 +5,12 @@ declare(strict_types=1);
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use MetaSoftDevs\TextSmsLaravelNotificationSdk\Contracts\SmsSender;
 
 /**
  * Persistent log of every outbound SMS dispatched through any
- * {@see \MetaSoftDevs\TextSmsLaravelNotificationSdk\Contracts\SmsSender}
- * implementation. Source of truth for delivery state.
+ * {@see SmsSender}
+ * implementation. Submission outcomes and informational callback payloads.
  *
  * Provider message IDs (e.g. TextSMS `messageid`) are matched against this
  * table when delivery-report callbacks arrive on
@@ -18,6 +19,9 @@ use Illuminate\Support\Facades\Schema;
  * The polymorphic `notifiable_type` / `notifiable_id` columns link a row
  * back to the model that caused the dispatch (a Receipt, a User, an Order,
  * etc.) without coupling this table to any specific consumer schema.
+ * The morph key type follows the host's Schema::morphUsingUuids() or
+ * morphUsingUlids() configuration. Configure it before migrating; mixed
+ * owner-key types require an application-owned schema decision.
  *
  * Table name and database connection are read from `config/textsms.php` so
  * consumers can repurpose the migration against an alternative schema.
@@ -39,7 +43,7 @@ return new class extends Migration
                 $table->string('sender_id', 32);
                 $table->text('body');
 
-                $table->enum('status', ['pending', 'sent', 'delivered', 'failed', 'rejected'])
+                $table->string('status', 16)
                     ->default('pending')
                     ->index();
                 $table->string('response_code', 8)->nullable();
@@ -47,7 +51,7 @@ return new class extends Migration
                 $table->string('network_id', 8)->nullable();
 
                 $table->nullableMorphs('notifiable');
-                $table->unsignedTinyInteger('attempt_count')->default(0);
+                $table->unsignedTinyInteger('attempt_count')->default(1);
 
                 $table->timestamp('sent_at')->nullable();
                 $table->timestamp('delivered_at')->nullable();

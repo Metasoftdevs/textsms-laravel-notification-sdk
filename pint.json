@@ -16,8 +16,5 @@
         "vendor",
         "build",
         "tests/database"
-    ],
-    "notPath": [
-        "database/migrations/*.stub"
     ]
 }

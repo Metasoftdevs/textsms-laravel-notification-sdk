@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace MetaSoftDevs\TextSmsLaravelNotificationSdk\Events;
 
 use Illuminate\Foundation\Events\Dispatchable;
+use Illuminate\Queue\SerializesModels;
 use MetaSoftDevs\TextSmsLaravelNotificationSdk\Models\SmsDispatch;
 
 /**
- * Fired by the gateway when the provider rejects a dispatch (any non-200
- * response code, validation error, transport failure, or unparseable
- * response).
+ * Fired after an unsuccessful outbound attempt is recorded as failed.
+ * This includes confirmed refusal and unknown acceptance (transport,
+ * unparseable or incomplete/ambiguous response correlation). The event
+ * does not prove the SMS was never sent; inspect provider_diagnostics.
  *
  * The event carries the same structured fields the gateway persists into
  * `sms_dispatches.metadata.provider_diagnostics`:
@@ -20,13 +22,13 @@ use MetaSoftDevs\TextSmsLaravelNotificationSdk\Models\SmsDispatch;
  *  - `providerErrors`       structured `errors` map from validation
  *                           responses (HTTP 422 shape from TextSMS)
  *  - `parseSource`          which response-shape branch produced the row
- *                           (`responses`, `top-level`, `unparseable`)
+ *                           (normal response shape or anomaly source)
  *
  * Listeners can use these to:
  *
  *  - Page on-call for `1004` low credits.
  *  - Open a ticket for `1006` invalid credentials.
- *  - Flag a domain row (e.g. a receipt) for resend.
+ *  - Flag a domain row for investigation before any resend.
  *  - Emit a Sentry breadcrumb with the structured `errors` map.
  *
  * Benchmark: replaces the inline `ActivityLogger::log('SMS Failed', ...)`
@@ -34,7 +36,7 @@ use MetaSoftDevs\TextSmsLaravelNotificationSdk\Models\SmsDispatch;
  */
 final class SmsDispatchFailed
 {
-    use Dispatchable;
+    use Dispatchable, SerializesModels;
 
     /**
      * @param  array<string, mixed>|null  $providerErrors  Structured `errors` map from validation responses.

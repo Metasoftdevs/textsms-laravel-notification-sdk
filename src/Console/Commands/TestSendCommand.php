@@ -35,6 +35,7 @@ final class TestSendCommand extends Command
     /** @var string */
     protected $description = 'Send a one-off test SMS through the configured sender.';
 
+    /** Send the requested test message and return an Artisan exit status. */
     public function handle(SmsSender $sender): int
     {
         $phoneArg = $this->argument('phone');
@@ -48,7 +49,7 @@ final class TestSendCommand extends Command
         $bodyOption = $this->option('body');
         $body = is_string($bodyOption) && $bodyOption !== ''
             ? $bodyOption
-            : 'TextSMS SDK test at '.now()->toDateTimeString().' UTC';
+            : 'TextSMS SDK test at '.now()->utc()->toDateTimeString().' UTC';
 
         $senderId = $this->option('sender');
 
@@ -65,7 +66,7 @@ final class TestSendCommand extends Command
 
             return self::INVALID;
         } catch (SmsProviderException $e) {
-            $this->error('Provider rejected dispatch: '.$e->getMessage());
+            $this->error('SMS dispatch failed: '.$e->getMessage());
             if ($e->providerCode !== null) {
                 $this->line('  provider_code        = '.$e->providerCode);
             }

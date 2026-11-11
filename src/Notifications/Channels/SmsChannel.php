@@ -60,11 +60,13 @@ use Psr\Log\LoggerInterface;
  */
 class SmsChannel
 {
+    /** Resolve outbound sends and channel diagnostics through their existing contracts. */
     public function __construct(
         private readonly SmsSender $sender,
         private readonly LoggerInterface $logger,
     ) {}
 
+    /** Adapt a routable notification; package dispatch exceptions are logged and return null. */
     public function send(object $notifiable, Notification $notification): ?SmsDispatch
     {
         if (! method_exists($notification, 'toSms')) {

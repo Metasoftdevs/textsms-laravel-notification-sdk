@@ -13,16 +13,16 @@ use Symfony\Component\HttpFoundation\Response;
 /**
  * Guards the TextSMS delivery-report webhook against unauthorised callers.
  *
- * Unlike API integrations that mutually authenticate (Sanctum tokens, JWT,
- * mTLS), TextSMS does not authenticate to our endpoint — they just hit
- * whatever URL we configure on their portal. The accepted defence is a
- * shared secret carried either as a `?token=` query parameter or an
+ * The SDK accepts a configured shared secret carried either as a `?token=` query parameter or an
  * `X-TextSMS-Token` header, compared in constant time via `hash_equals()`
- * to defeat timing attacks.
+ * to defeat timing attacks. Confirm the provider's callback registration
+ * and token transport capabilities for the account before using this endpoint.
  *
- * Mismatch → 401 Unauthorized + a PSR-3 warning log entry. Missing
- * configuration → 500 Server misconfiguration (so ops sees the failure
- * loudly during initial setup instead of silently accepting everything).
+ * Mismatch, absence, or a non-string token (for example `?token[]=…`) →
+ * 401 Unauthorized + a PSR-3 warning log entry. Missing configuration →
+ * 500 Server misconfiguration (so ops sees the failure loudly during
+ * initial setup instead of silently accepting everything). Denial logs
+ * never contain the presented token value.
  *
  * Benchmark: ported from
  * `app/Http/Middleware/Api/VerifyTextSmsCallback.php` in QPIMS, with the
@@ -31,6 +31,7 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class VerifyTextSmsCallback
 {
+    /** Route authentication failures through the application's logger. */
     public function __construct(
         private readonly LoggerInterface $logger,
     ) {}
@@ -49,9 +50,11 @@ class VerifyTextSmsCallback
             return $this->denyResponse('Server misconfiguration', Response::HTTP_INTERNAL_SERVER_ERROR);
         }
 
-        $supplied = (string) ($request->header('X-TextSMS-Token') ?? $request->query('token', ''));
+        // The header wins when present. A query value can be an array
+        // (`?token[]=…`), so check the type before comparing.
+        $supplied = $request->header('X-TextSMS-Token') ?? $request->query('token');
 
-        if ($supplied === '' || ! hash_equals($expected, $supplied)) {
+        if (! is_string($supplied) || $supplied === '' || ! hash_equals($expected, $supplied)) {
             $this->logDenial('Invalid or missing TextSMS callback token', $request);
 
             return $this->denyResponse('Unauthorized', Response::HTTP_UNAUTHORIZED);
@@ -76,6 +79,10 @@ class VerifyTextSmsCallback
      * Surface every denial through the PSR-3 logger so SIEM / ELK / Sentry
      * pipelines can alert on unexpected traffic to the webhook URL.
      *
+     * The URL is logged without its query string and only the query
+     * **keys** are recorded, so a presented `?token=` value (including a
+     * stale secret during rotation) never reaches the log.
+     *
      * @param  string  $reason  Human-readable reason recorded against the log entry.
      */
     private function logDenial(string $reason, Request $request): void
@@ -84,7 +91,8 @@ class VerifyTextSmsCallback
             'reason' => $reason,
             'ip' => $request->ip(),
             'user_agent' => $request->userAgent(),
-            'url' => $request->fullUrl(),
+            'url' => $request->url(),
+            'query_keys' => array_keys($request->query()),
             'method' => $request->method(),
         ]);
     }

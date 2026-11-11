@@ -30,13 +30,15 @@ use MetaSoftDevs\TextSmsLaravelNotificationSdk\Contracts\SmsSender;
  *   ],
  *   ```
  *
- * Status lifecycle:
+ * Submission status lifecycle:
  *
  *  - `pending`   row inserted before the provider HTTP call
  *  - `sent`      provider accepted the message (HTTP 200 + provider code `200`)
- *  - `delivered` DLR callback confirmed delivery to handset
- *  - `failed`    provider rejected, HTTP error, or DLR reported failure
- *  - `rejected`  permanent provider rejection (invalid number, blacklist, etc.)
+ *  - `failed`    unsuccessful attempt, including unknown provider acceptance
+ *
+ * Callbacks only replace `dlr_payload`, without changing state or timestamps.
+ * Legacy `delivered`/`rejected` rows and delivery timestamp fields remain
+ * readable; the default callback path no longer produces those transitions.
  *
  * Benchmark: ported from `app/Models/SmsDispatch.php` in QPIMS, with
  * connection/table reads moved into `getConnectionName()` and `getTable()`
@@ -55,7 +57,7 @@ use MetaSoftDevs\TextSmsLaravelNotificationSdk\Contracts\SmsSender;
  * @property string|null $response_description
  * @property string|null $network_id
  * @property string|null $notifiable_type
- * @property int|null $notifiable_id
+ * @property int|string|null $notifiable_id
  * @property int $attempt_count
  * @property Carbon|null $sent_at
  * @property Carbon|null $delivered_at
@@ -155,8 +157,9 @@ class SmsDispatch extends Model
     }
 
     /**
-     * Scope: provider accepted, no DLR yet (`status=sent`, `delivered_at IS NULL`).
-     * Useful for "stuck" dispatches dashboards.
+     * Legacy scope: `status=sent`, `delivered_at IS NULL`.
+     * Passive callbacks do not set delivered_at. To find missing information,
+     * query sent rows with `whereNull('dlr_payload')` instead.
      */
     public function scopeAwaitingDlr(Builder $query): Builder
     {
@@ -164,7 +167,7 @@ class SmsDispatch extends Model
     }
 
     /**
-     * Scope: rows that failed at any stage (provider rejection, HTTP error, DLR failure).
+     * Scope: failed submissions and legacy rejected rows; not proof of non-delivery.
      */
     public function scopeFailed(Builder $query): Builder
     {

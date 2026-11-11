@@ -25,6 +25,7 @@ final class BalanceCommand extends Command
     /** @var string */
     protected $description = 'Print the configured SMS sender\'s account balance.';
 
+    /** Print the configured sender's balance or a provider error with a failing exit status. */
     public function handle(SmsSender $sender): int
     {
         try {

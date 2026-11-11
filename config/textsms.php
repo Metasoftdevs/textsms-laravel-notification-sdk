@@ -76,7 +76,8 @@ return [
     | Database
     |--------------------------------------------------------------------------
     |
-    | The `sms_dispatches` table is the source of truth for delivery state.
+    | The `sms_dispatches` table records submission attempts and informational
+    | delivery-report payloads. Callbacks do not change submission state.
     | Override the connection or table name here to repurpose the model
     | against an alternative schema.
     |
@@ -92,8 +93,9 @@ return [
     |--------------------------------------------------------------------------
     |
     | The DLR endpoint registered automatically by the service provider when
-    | `enabled` is true. Configure the same URL prefix on the TextSMS
-    | portal's "Callback URL" field as:
+    | `enabled` is true. The SDK accepts POST callbacks; the account's live
+    | provider method/schema/registration/retry contract needs confirmation.
+    | If it matches this endpoint, register a URL such as:
     |
     |   https://<host>/<url_prefix>/textsms/dlr?token=<TEXTSMS_DLR_SECRET>
     |
@@ -101,7 +103,10 @@ return [
     'webhook' => [
         'enabled' => (bool) env('TEXTSMS_WEBHOOK_ENABLED', true),
         'url_prefix' => env('TEXTSMS_WEBHOOK_PREFIX', 'api/v1/sms'),
-        'middleware' => ['throttle:60,1'],
+        'rate_limit_per_minute' => (int) env('TEXTSMS_WEBHOOK_RATE_LIMIT', 600),
+        // Optional additional middleware; authentication and the named limiter
+        // are already applied by the package route.
+        'middleware' => [],
     ],
 
 ];

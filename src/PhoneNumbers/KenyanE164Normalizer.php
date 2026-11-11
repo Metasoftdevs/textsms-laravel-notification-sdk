@@ -38,6 +38,7 @@ use MetaSoftDevs\TextSmsLaravelNotificationSdk\Contracts\PhoneNumberNormalizer;
  */
 final class KenyanE164Normalizer implements PhoneNumberNormalizer
 {
+    /** {@inheritDoc} */
     public function normalize(?string $raw): ?string
     {
         if ($raw === null) {
@@ -63,6 +64,7 @@ final class KenyanE164Normalizer implements PhoneNumberNormalizer
         return $this->isValid($digits) ? $digits : null;
     }
 
+    /** {@inheritDoc} */
     public function isValid(?string $candidate): bool
     {
         if ($candidate === null) {

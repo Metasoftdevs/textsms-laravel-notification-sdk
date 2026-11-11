@@ -185,7 +185,7 @@ it('rejects bulk over the 20-message provider limit', function (): void {
     Http::assertNothingSent();
 });
 
-it('updates a dispatch row to delivered when a DLR with status Delivered arrives', function (): void {
+it('stores a Delivered callback without changing submission state', function (): void {
     Http::fake();
 
     $row = SmsDispatch::create([
@@ -205,12 +205,12 @@ it('updates a dispatch row to delivered when a DLR with status Delivered arrives
     ]);
 
     expect($updated->id)->toBe($row->id);
-    expect($updated->status)->toBe('delivered');
-    expect($updated->delivered_at)->not->toBeNull();
+    expect($updated->status)->toBe('sent');
+    expect($updated->delivered_at)->toBeNull();
     expect($updated->dlr_payload['status'])->toBe('Delivered');
 });
 
-it('classifies undelivered DLR as failed and fires SmsDeliveryReported', function (): void {
+it('stores an Undelivered callback without classifying it or firing a delivery event', function (): void {
     Event::fake([SmsDeliveryReported::class]);
 
     SmsDispatch::create([
@@ -229,15 +229,10 @@ it('classifies undelivered DLR as failed and fires SmsDeliveryReported', functio
         'mobile' => '254712345678',
     ]);
 
-    expect($updated->status)->toBe('failed');
-    expect($updated->failed_at)->not->toBeNull();
-
-    Event::assertDispatched(
-        SmsDeliveryReported::class,
-        fn (SmsDeliveryReported $event): bool => $event->deliveryStatus === 'failed'
-            && $event->rawStatus === 'undelivered'
-            && $event->dispatch->provider_message_id === '888',
-    );
+    expect($updated->status)->toBe('sent');
+    expect($updated->failed_at)->toBeNull();
+    expect($updated->dlr_payload['status'])->toBe('Undelivered');
+    Event::assertNotDispatched(SmsDeliveryReported::class);
 });
 
 it('returns null from recordDeliveryReport when messageid is unknown', function (): void {

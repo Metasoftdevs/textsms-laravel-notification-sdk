@@ -24,6 +24,7 @@ final class ShowDispatchCommand extends Command
     /** @var string */
     protected $description = 'Pretty-print a single `sms_dispatches` row by its ULID.';
 
+    /** Display the dispatch selected by ULID, returning failure when it cannot be found. */
     public function handle(): int
     {
         $ulid = $this->argument('ulid');

@@ -10,8 +10,29 @@
 /tests              export-ignore
 /.gitattributes     export-ignore
 /.gitignore         export-ignore
-/.php-cs-fixer.dist.php  export-ignore
 /CHANGELOG.md       export-ignore
 /CONTRIBUTING.md    export-ignore
 /phpstan.neon.dist  export-ignore
 /phpunit.xml.dist   export-ignore
+/pint.json          export-ignore
+
+# Internal engineering material: reviews, agent directives, and local agent
+# settings. Never part of the consumer distribution.
+/.docs              export-ignore
+/.agents            export-ignore
+/.claude            export-ignore
+
+# Composer's working-tree archive does not apply .gitignore. Exclude local
+# dependencies, verification output and environment files explicitly too.
+/vendor             export-ignore
+/build              export-ignore
+/coverage           export-ignore
+/.env               export-ignore
+/.env.*             export-ignore
+/composer.lock      export-ignore
+/.idea              export-ignore
+/.vscode            export-ignore
+/.phpunit.cache     export-ignore
+/.phpunit.result.cache export-ignore
+/.phpstan.cache     export-ignore
+/.php-cs-fixer.cache export-ignore

@@ -20,8 +20,8 @@ declare(strict_types=1);
  *
  *   POST {prefix}/textsms/dlr   route name: metasoftdevs.textsms.dlr
  *
- * which is guarded by the `verify.textsms.callback` middleware alias
- * registered by the service provider.
+ * which authenticates via `verify.textsms.callback` before consuming the
+ * named `textsms-dlr` limiter registered by the service provider.
  */
 
 use Illuminate\Support\Facades\Route;
@@ -33,6 +33,6 @@ Route::prefix((string) config('textsms.webhook.url_prefix', 'api/v1/sms'))
     ->middleware((array) config('textsms.webhook.middleware', []))
     ->group(function (): void {
         Route::post('textsms/dlr', [TextSmsCallbackController::class, 'dlr'])
-            ->middleware('verify.textsms.callback')
+            ->middleware(['verify.textsms.callback', 'throttle:textsms-dlr'])
             ->name('dlr');
     });

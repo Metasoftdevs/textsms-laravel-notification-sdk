@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MetaSoftDevs\TextSmsLaravelNotificationSdk\Events;
 
 use Illuminate\Foundation\Events\Dispatchable;
+use Illuminate\Queue\SerializesModels;
 use MetaSoftDevs\TextSmsLaravelNotificationSdk\Models\SmsDispatch;
 
 /**
@@ -24,8 +25,9 @@ use MetaSoftDevs\TextSmsLaravelNotificationSdk\Models\SmsDispatch;
  */
 final class SmsDispatchAccepted
 {
-    use Dispatchable;
+    use Dispatchable, SerializesModels;
 
+    /** Attach the recorded dispatch for synchronous or queued consumer listeners. */
     public function __construct(
         public readonly SmsDispatch $dispatch,
     ) {}
