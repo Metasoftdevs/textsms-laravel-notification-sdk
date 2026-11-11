@@ -63,6 +63,14 @@ version; that warning is not evidence of an actual 1.0.0 tag.
 
 ## Direct-checkout follow-up
 
+Final tagged follow-up: actual `git archive v1.0.0-rc1` and the downloaded
+GitHub ZIP both passed with28 byte-matched runtime files after the complete
+remote CI gate. This closes the committed/tagged artifact gate left open
+by the controlled-stage review. The local scratch-directory permission
+failure below remains a historical working-tree tooling observation. Exact
+tag, ZIP/content hashes and installed-archive verification are in
+[release execution](2026-11-11-commit-ci-and-tag-verification.md).
+
 Coordinator follow-up: a direct archive from the full checkout was attempted
 after the corrected exclusions. It exited1 because recursive traversal could
 not read an earlier ignored scratch directory,

@@ -593,8 +593,9 @@ are merged.
 > for active status. Passive D3 removes delivery transitions/actions and
 > the conditional poller gate from this older graph/milestone table. D2/D3/D4
 > are now resolved. D5 uses native publish-once migrations; D6 folder disclosure
-> and current redaction are resolved with history pending; D7 dual-major work
-> has actual verification evidence and remaining matrix gates in that pathway.
+> and current redaction are resolved; the owner accepts the historical recipient.
+> D7 dual-major work and the complete remote matrix now pass on the pushed RC
+> tag. Live SMS verification is owner-deferred until after publication.
 
 ### 8.1 Lanes
 

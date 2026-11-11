@@ -189,3 +189,16 @@ It used synthetic SMS settings and a loopback-only provider URL. There were
 no provider requests and no additional real-database operations. This is a
 local mirrored-candidate install rather than a published archive/tag install.
 Repository source, dependency files and maintained tests were unchanged.
+
+## Actual tagged archive follow-up
+
+The coordinator subsequently pushed `v1.0.0-rc1` on the complete CI-green
+commit `e57ee40` and downloaded the real GitHub tag ZIP. Each disposable
+Laravel12/13 app replaced only the mirrored candidate with version
+`1.0.0-rc1` from that verified ZIP. Both Composer updates/discovery scripts
+completed successfully and reported no vulnerability advisories. All28
+installed package files, the dist reference and actual application boot,
+commands, limited callback route and existing migrated table were verified.
+These checks close the earlier local-mirror-versus-tagged-archive gap. They
+are not a public Packagist install or live SMS test. Exact hashes and evidence
+are in [release execution](2026-11-11-commit-ci-and-tag-verification.md).

@@ -4,8 +4,9 @@
 **Status:** local implementation and independent review complete. The two
 Laravel13 dependency graphs, fresh Laravel12/13 apps, real database probes and
 controlled archive pass. Root vendor is restored and the final root gate passes. Remote
-CI and publication are not accepted gates yet. The owner now authorizes
-commit/push, full remote CI and tagged-distribution verification; execution is
+CI passed all14 jobs; annotated `v1.0.0-rc1` is pushed on `e57ee40` and both
+the actual tagged GitHub ZIP and its Laravel12/13 installation are verified.
+Public Packagist publication remains an account operation. Exact evidence is
 tracked in [release execution](2026-11-11-commit-ci-and-tag-verification.md).
 Live SMS verification is explicitly deferred until after publication; historical
 recipient retention is accepted. Neither remains a pre-publication blocker.
@@ -23,7 +24,7 @@ current commit/push/tag results; no live-provider send or history rewrite is pla
 | D5 / T-12 | Implemented minimal native publishing and settled fresh schema: discoverable PHP migration, string16 status and attempt default1. Publish once; host-controlled redating and forward migration for old tables. [Record](T-12-native-migration-publishing.md). |
 | T-14 | Accepted: honest persisted fake/log behavior, full bulk preflight/atomic saves, cached-driver replacement and isolated publication. [Record](T-14-test-double-fidelity.md). |
 | T-19 | Current example/upgrade/queue/contributing/checklist corrections implemented. Unsafe optional retry recipe removed; no new framework. [Record](T-19-nov11-public-documentation.md). |
-| T-18 | Final lowest/stable13 graphs each pass381 tests/2504 assertions and PHPStan8. The other ten declared matrix rows remain unverified. [Compatibility evidence](T-18-laravel13-compatibility.md). |
+| T-18 | Local lowest/stable13 graphs pass381 tests/2504 assertions and PHPStan8; the complete12-row remote matrix now passes on the tagged commit. [Compatibility evidence](T-18-laravel13-compatibility.md). |
 | Guzzle compatibility | Native transfer statistics preserve D2 across Guzzle7/8; no text parsing or broader retry permission. Independent controls passed on both. [Review](2026-11-11-independent-source-review.md). |
 | T-08B / D6 | `.docs/` and `.agents/` approved for commits. `.claude/` is local-permission-only and ignored. Current recipient references redacted; owner accepts keeping the recipient in Git history. [Record](T-08B-current-file-privacy.md). |
 | T-21 | Fresh Laravel12.72/13.42 install/discovery/publication/migration/cache checks pass; MySQL8.4.13 and PostgreSQL16.15 each pass63 checks. [Install/database evidence](T-21-nov11-install-and-database-verification.md). |
@@ -42,9 +43,9 @@ current commit/push/tag results; no live-provider send or history rewrite is pla
 | T-11 | Passive-support wording accurate; provider-specific live claims remain provisional until T-07. |
 | T-12,T-13,T-14 | Native migration/schema, morph association and test-double fidelity implemented and independently accepted. |
 | T-16 | Required provider/binding/normalizer/command and accepted behavior regressions exist in381 tests; no coverage-percentage or exhaustive-coverage claim. Old poll-command criteria are superseded by passive scope. |
-| T-17,T-18 | Twelve-row CI prepared; two final13 dependency graphs pass. Remaining matrix/remote exact-commit evidence open. |
+| T-17,T-18 | All12 remote matrix jobs plus PHPStan/Pint pass on exact tagged commit `e57ee40`; actual workflow validation/audit steps pass. |
 | T-19 | Current public docs/examples/recipes aligned; historical extraction/review material remains clearly marked. |
-| T-21 | Candidate archive, fresh12/13 installs and real database checks accepted locally; exact release/authorized publication gates remain. |
+| T-21 | Actual pushed RC tag, remote GitHub archive, tagged archive installs and boot on12/13 all verified. Public visibility/Packagist publication remain account steps. |
 
 ## B1–B9 crosscheck (dispositions)
 
@@ -54,8 +55,8 @@ current commit/push/tag results; no live-provider send or history rewrite is pla
 | B2: recipient/private folders prevent publication | Current recipient is anonymized and folder disclosure is resolved. Owner accepts keeping the value in historical commits; no history rewrite or remote force-push is required. |
 | B3: schema unsettled | Fresh schema and native publishing resolved; old tables need an application-owned forward migration preserving rows/indexes/keys and engine-specific enum/CHECK changes. |
 | B4: morph map ignored | Fixed and independently reviewed;18 mapped sender/operation/key cases pass. Existing historical data is not silently rewritten. |
-| B5: CI never ran | Historical absolute claim unproven. The candidate is uncommitted, so it has no exact remote commit gate. The GitHub connector returned404; account/visibility/CI state cannot be inferred from that. Prepared12-row matrix plus actual local runs are recorded separately. |
-| B6: Laravel13 support | Dual-major source/toolchain work now exists and final lowest/stable13 PHP8.3 graphs pass. Complete the declared matrix on the exact release commit. Laravel13 is a support-scope choice, not an intrinsic Packagist requirement. |
+| B5: CI never ran | Resolved for this release:12 tests jobs plus PHPStan/Pint completed successfully on tagged commit `e57ee40`. Existing origin credentials supplied API access after connector404; no credentials were exposed. |
+| B6: Laravel13 support | Dual-major source/toolchain work, full declared remote matrix and fresh/tagged archive12/13 application checks pass. |
 | B7: balance falsely succeeds | Fixed: invalid HTTP/provider/JSON outcomes now raise the package exception and the command returns failure. |
 | B8: fake validates differently | Corrected at existing sender boundaries; validation, storage, bulk preparation and event/failure behavior are covered by focused tests/review. |
 | B9: release checks/toolchain | VerifiedComposer2.11.2 used; fresh installs, both real databases and controlled candidate archive pass. Root vendor restored; exact committed/tagged/remote gates remain explicit. |
@@ -130,10 +131,10 @@ neither an archive-command failure nor successful staging is claimed as that pas
 - Commit/push, full remote CI and tagged-distribution verification are now
   authorized. Actual results belong in the release execution record. Public
   visibility and Packagist account operations remain separate account steps.
-- The complete12-row workflow must run on that exact commit. Only two final
-  local13 rows are accepted here; startup of portable PHP8.4/8.5 is not a
-  successful matrix row. One delegated escalation was not executed because
-  automatic approval review reached a usage limit; this was not a safety verdict.
+- Complete remote matrix and tagged-distribution gates are now closed on
+  `e57ee40`/`v1.0.0-rc1`; all14 jobs pass. Earlier local matrix limits and the
+  delegated approval-review quota interruption are historical, superseded by
+  actual remote execution, not evidence of an unsafe-action verdict.
 - Operational DLR-secret rotation/retention in any affected deployments remains
   environment-owned. No deployed config, callback registration or historical
   database/log cleanup has run.
@@ -153,8 +154,9 @@ polling, active precedence, callback hooks, resend counters or a history table.
    required configuration and approved documentation/directives, preserving
    packet provenance. [Commit directives](../../../.agents/commit_directives.md)
    require: "Create a commit only when the project owner authorizes it."
-4. Run the complete matrix/audits on that exact remote commit, inspect its
-   actual distribution and fresh tagged installs; close any resulting defect.
+4. Complete: remote matrix/audits passed on the exact tagged commit; actual
+   remote distribution and tagged installs passed. Final documentation evidence
+   is committed separately after the tag without changing that accepted tag.
 5. Confirm public repository/Packagist maintainer access and obtain publication
    authorization, then publish the release candidate. Promote to stable only
    after its feedback and repeated exact-release checks pass. Use the

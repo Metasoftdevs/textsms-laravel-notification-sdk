@@ -1,7 +1,9 @@
 # T-18 - Laravel 12/13 compatibility verification
 
 **Date:** 2026-11-11, Africa/Nairobi. **Status:** two corrected Laravel 13/PHP
-8.3 suites verified; final source acceptance and the remaining matrix are open.
+8.3 suites verified; final source acceptance and the full remote matrix now pass.
+Earlier local-only limits below are historical and superseded by the remote
+follow-up linked at the end of this record.
 **Owner:** Codex compatibility agent. The coordinator owns the subsequent
 capability-guard correction and final snapshot checks. See the current
 [execution status](2026-11-11-execution-status.md) for those final results.
@@ -162,7 +164,17 @@ These two completed final rows supersede the pending final-source wording
 above. The other ten matrix rows remain unverified; portable runtime startup
 alone does not close them.
 
-## Evidence limits
+## Remote matrix follow-up, November11
+
+The complete12-row GitHub Actions test matrix passed on
+`e57ee40f9168b12d68d1898834019994ce74df46`, now the pushed `v1.0.0-rc1` commit.
+Laravel12 on PHP8.2/8.3/8.4 and Laravel13 on PHP8.3/8.4/8.5 passed at both
+lowest and stable dependencies. PHPStan8, Pint, validation and audit also passed.
+These actual remote results close the earlier unverified rows; portable runtime
+startup alone was never counted as a matrix pass. Exact runs and job evidence
+are in [release execution](2026-11-11-commit-ci-and-tag-verification.md).
+
+## Evidence limits (local runs above)
 
 Local Windows/PDO SQLite matrix runs establish behavior on their actual
 resolved graphs. They do not replace GitHub's Linux jobs on the exact release
